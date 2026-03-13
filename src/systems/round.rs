@@ -14,7 +14,7 @@ pub fn handle_missile_impact(
     mut spawn_queue: ResMut<ParticleSpawnQueue>,
     settings: Res<GameSettings>,
 ) {
-    let impacts: Vec<_> = impact_queue.impacts.drain(..).collect();
+    let impacts = std::mem::take(&mut impact_queue.impacts);
     for impact in impacts {
         match impact.hit_type {
             HitType::Planet => {
@@ -86,23 +86,16 @@ pub fn handle_missile_impact(
                 turn.firing = false;
                 turn.show_round = 100.0;
             }
-            HitType::Timeout => {
-                end_shot(&mut turn);
-            }
         }
     }
 }
 
 fn end_shot(turn: &mut TurnState) {
-    let next = 3 - turn.last_player;
+    let next = turn.other_player();
     info!("End shot: next player = {}", next);
     turn.current_player = next;
     turn.firing = false;
 }
-
-/// This function is no longer needed since round_over_input handles it directly.
-/// Kept as a stub for the main.rs reference.
-pub fn handle_advance_round() {}
 
 /// Round setup: increment round counter and transition to aiming.
 pub fn round_setup(

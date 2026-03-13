@@ -4,6 +4,7 @@ use rand::Rng;
 use crate::components::*;
 use crate::constants::*;
 use crate::resources::*;
+use crate::systems::player::pygame_to_bevy;
 
 /// Process queued particle spawn requests.
 pub fn spawn_particles(
@@ -19,7 +20,7 @@ pub fn spawn_particles(
 
     let mut rng = rand::thread_rng();
 
-    let requests: Vec<_> = spawn_queue.requests.drain(..).collect();
+    let requests = std::mem::take(&mut spawn_queue.requests);
     if !requests.is_empty() {
         info!("Spawning particles: {} requests", requests.len());
     }
@@ -49,12 +50,11 @@ pub fn spawn_particles(
                 assets.explosion_10.clone()
             };
 
-            let bx = pos.0 as f32 - WINDOW_WIDTH / 2.0;
-            let by = WINDOW_HEIGHT / 2.0 - pos.1 as f32;
+            let bevy_pos = pygame_to_bevy(pos.0, pos.1);
 
             commands.spawn((
                 Sprite::from_image(texture),
-                Transform::from_xyz(bx, by, 5.0),
+                Transform::from_xyz(bevy_pos.x, bevy_pos.y, 5.0),
                 GravityBody {
                     pos,
                     velocity: (vx, vy),
@@ -63,7 +63,6 @@ pub fn spawn_particles(
                 },
                 ParticleMarker {
                     size: request.size,
-                    impact_pos: pos,
                 },
             ));
         }
@@ -76,12 +75,7 @@ pub fn cleanup_particles(
     particles: Query<(Entity, &GravityBody), With<ParticleMarker>>,
 ) {
     for (entity, body) in particles.iter() {
-        let in_range = body.pos.0 >= -800.0
-            && body.pos.0 <= 2400.0
-            && body.pos.1 >= -600.0
-            && body.pos.1 <= 1800.0;
-
-        if body.flight < 0 || !in_range {
+        if body.flight < 0 || !is_in_extended_range(body.pos) {
             commands.entity(entity).despawn();
         }
     }

@@ -9,7 +9,6 @@ pub struct Player {
     pub score: i32,
     pub attempts: u32,
     pub shot: bool,
-    pub color: Color,
     pub color_rgb: (u8, u8, u8),
     /// Distance from center to gun point
     pub gun_offset: f64,
@@ -17,12 +16,21 @@ pub struct Player {
     pub explosion_frame: u32,
 }
 
+impl Player {
+    pub fn color(&self) -> Color {
+        Color::srgb(
+            self.color_rgb.0 as f32 / 255.0,
+            self.color_rgb.1 as f32 / 255.0,
+            self.color_rgb.2 as f32 / 255.0,
+        )
+    }
+}
+
 #[derive(Component)]
 pub struct Planet {
     pub mass: f64,
     pub radius: f64,
     pub pos: Vec2,
-    pub planet_n: u8,
     pub is_blackhole: bool,
 }
 
@@ -44,11 +52,7 @@ pub struct MissileMarker {
 #[derive(Component)]
 pub struct ParticleMarker {
     pub size: u8,
-    pub impact_pos: (f64, f64),
 }
-
-#[derive(Component)]
-pub struct AimLine;
 
 #[derive(Component)]
 pub struct TrailSprite;
@@ -68,11 +72,3 @@ pub struct UiRoundInfo;
 #[derive(Component)]
 pub struct UiMissileStatus;
 
-#[derive(Component)]
-pub struct RoundOverlay;
-
-#[derive(Component)]
-pub struct DimOverlay;
-
-#[derive(Component)]
-pub struct BounceBorder;

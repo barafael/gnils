@@ -5,6 +5,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use crate::components::*;
 use crate::constants::*;
 use crate::resources::*;
+use crate::systems::player::pygame_to_bevy;
 
 pub fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d);
@@ -32,7 +33,6 @@ pub fn load_assets(
         blue_ship: asset_server.load("blue_ship.png"),
         ship_atlas_layout,
         shot: asset_server.load("shot.png"),
-        explosion: asset_server.load("explosion.png"),
         explosion_10: asset_server.load("explosion-10.png"),
         explosion_5: asset_server.load("explosion-5.png"),
         planets: [
@@ -95,9 +95,7 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
     let y1 = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
     let y2 = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
 
-    let p1_center_x = 40.0;
-    let p1_bevy_x = p1_center_x as f32 - WINDOW_WIDTH / 2.0;
-    let p1_bevy_y = WINDOW_HEIGHT / 2.0 - y1 as f32;
+    let p1_bevy = pygame_to_bevy(40.0, y1);
 
     commands.spawn((
         Sprite::from_atlas_image(
@@ -107,7 +105,7 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
                 index: 0,
             },
         ),
-        Transform::from_xyz(p1_bevy_x, p1_bevy_y, 4.0),
+        Transform::from_xyz(p1_bevy.x, p1_bevy.y, 4.0),
         Player {
             id: 1,
             angle: 90.0,
@@ -116,20 +114,13 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
             score: 0,
             attempts: 0,
             shot: false,
-            color: Color::srgb(
-                PLAYER1_COLOR.0 as f32 / 255.0,
-                PLAYER1_COLOR.1 as f32 / 255.0,
-                PLAYER1_COLOR.2 as f32 / 255.0,
-            ),
             color_rgb: PLAYER1_COLOR,
             gun_offset: 22.0,
             explosion_frame: 0,
         },
     ));
 
-    let p2_center_x = 760.0;
-    let p2_bevy_x = p2_center_x as f32 - WINDOW_WIDTH / 2.0;
-    let p2_bevy_y = WINDOW_HEIGHT / 2.0 - y2 as f32;
+    let p2_bevy = pygame_to_bevy(760.0, y2);
 
     commands.spawn((
         Sprite::from_atlas_image(
@@ -139,7 +130,7 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
                 index: 0,
             },
         ),
-        Transform::from_xyz(p2_bevy_x, p2_bevy_y, 4.0),
+        Transform::from_xyz(p2_bevy.x, p2_bevy.y, 4.0),
         Player {
             id: 2,
             angle: 270.0,
@@ -148,11 +139,6 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
             score: 0,
             attempts: 0,
             shot: false,
-            color: Color::srgb(
-                PLAYER2_COLOR.0 as f32 / 255.0,
-                PLAYER2_COLOR.1 as f32 / 255.0,
-                PLAYER2_COLOR.2 as f32 / 255.0,
-            ),
             color_rgb: PLAYER2_COLOR,
             gun_offset: 23.0,
             explosion_frame: 0,

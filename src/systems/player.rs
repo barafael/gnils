@@ -46,7 +46,7 @@ pub fn draw_aim_line(mut gizmos: Gizmos, players: Query<(&Player, &Transform)>, 
         let start_bevy = pygame_to_bevy(lx, ly);
         let end_bevy = pygame_to_bevy(end_x, end_y);
 
-        gizmos.line_2d(start_bevy, end_bevy, player.color);
+        gizmos.line_2d(start_bevy, end_bevy, player.color());
     }
 }
 
@@ -117,23 +117,6 @@ pub fn update_ui_text(
             **text = format!("Round {}", turn.round);
         }
     }
-}
-
-/// Get the launch point of a player's gun in pygame coordinates.
-pub fn get_launch_point(player: &Player) -> (f64, f64) {
-    // The player's center in pygame coords
-    let cx = if player.id == 1 { 40.0 } else { 760.0 };
-    // We don't track per-player y in pygame coords in the Player component,
-    // so we derive it from the bevy transform. But for now, store it.
-    // Actually we need to get it from the transform. Let's use a helper that
-    // takes the transform too.
-    // For now, this function is a placeholder; the real version needs the transform.
-    let cy = 300.0; // placeholder
-    let angle_rad = player.angle.to_radians();
-    (
-        cx + player.gun_offset * angle_rad.sin(),
-        cy - player.gun_offset * angle_rad.cos(),
-    )
 }
 
 /// Get launch point using player data and transform.

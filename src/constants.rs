@@ -12,7 +12,6 @@ pub const N_PARTICLES_10: u32 = 30;
 
 pub const MAX_FLIGHT: i32 = 750;
 pub const DEFAULT_MAX_PLANETS: u32 = 4;
-pub const DEFAULT_MAX_BLACKHOLES: u32 = 0;
 
 pub const HIT_SCORE: i32 = 1500;
 pub const SELF_HIT: i32 = 2000;
@@ -22,8 +21,6 @@ pub const QUICK_SCORE_3: i32 = 100;
 pub const PENALTY_FACTOR: f64 = 5.0;
 
 pub const FPS: f64 = 30.0;
-pub const KEY_DELAY_SECS: f64 = 0.250;
-pub const KEY_REPEAT_SECS: f64 = 0.030;
 
 pub const WINDOW_WIDTH: f32 = 800.0;
 pub const WINDOW_HEIGHT: f32 = 600.0;
@@ -31,11 +28,18 @@ pub const WINDOW_HEIGHT: f32 = 600.0;
 pub const PLAYER1_COLOR: (u8, u8, u8) = (209, 170, 133);
 pub const PLAYER2_COLOR: (u8, u8, u8) = (132, 152, 192);
 
-pub const PLAYER1_X: f64 = 20.0;
-pub const PLAYER2_X: f64 = 780.0;
 pub const PLAYER_Y_MIN: f64 = 100.0;
 pub const PLAYER_Y_MAX: f64 = 500.0;
 
 pub const SHIP_FRAME_WIDTH: u32 = 40;
 pub const SHIP_FRAME_HEIGHT: u32 = 33;
-pub const SHIP_FRAME_COUNT: u32 = 8;
+
+/// Check if a position is within the visible screen (pygame coords).
+pub fn is_on_screen(pos: (f64, f64)) -> bool {
+    pos.0 >= 0.0 && pos.0 <= 800.0 && pos.1 >= 0.0 && pos.1 <= 600.0
+}
+
+/// Check if a position is within extended range (for cleanup).
+pub fn is_in_extended_range(pos: (f64, f64)) -> bool {
+    pos.0 >= -800.0 && pos.0 <= 2400.0 && pos.1 >= -600.0 && pos.1 <= 1800.0
+}

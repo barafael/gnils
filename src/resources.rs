@@ -16,11 +16,8 @@ pub enum GamePhase {
 #[derive(Resource)]
 pub struct GameSettings {
     pub max_planets: u32,
-    pub max_blackholes: u32,
     pub bounce: bool,
     pub invisible: bool,
-    pub fixed_power: bool,
-    pub fixed_power_value: f64,
     pub particles_enabled: bool,
     pub max_rounds: u32,
     pub max_flight: i32,
@@ -30,11 +27,8 @@ impl Default for GameSettings {
     fn default() -> Self {
         Self {
             max_planets: DEFAULT_MAX_PLANETS,
-            max_blackholes: DEFAULT_MAX_BLACKHOLES,
             bounce: false,
             invisible: false,
-            fixed_power: false,
-            fixed_power_value: 200.0,
             particles_enabled: true,
             max_rounds: 0,
             max_flight: MAX_FLIGHT,
@@ -52,6 +46,12 @@ pub struct TurnState {
     pub show_round: f64,
     pub show_planets: f64,
     pub game_over: bool,
+}
+
+impl TurnState {
+    pub fn other_player(&self) -> u8 {
+        3 - self.last_player
+    }
 }
 
 impl Default for TurnState {
@@ -90,23 +90,6 @@ impl Default for BounceAnimation {
 }
 
 #[derive(Resource)]
-pub struct KeyRepeatState {
-    pub delay_timer: f32,
-    pub repeat_timer: f32,
-    pub active: bool,
-}
-
-impl Default for KeyRepeatState {
-    fn default() -> Self {
-        Self {
-            delay_timer: 0.0,
-            repeat_timer: 0.0,
-            active: false,
-        }
-    }
-}
-
-#[derive(Resource)]
 pub struct GameAssets {
     pub font: Handle<Font>,
     pub backdrop: Handle<Image>,
@@ -114,7 +97,6 @@ pub struct GameAssets {
     pub blue_ship: Handle<Image>,
     pub ship_atlas_layout: Handle<TextureAtlasLayout>,
     pub shot: Handle<Image>,
-    pub explosion: Handle<Image>,
     pub explosion_10: Handle<Image>,
     pub explosion_5: Handle<Image>,
     pub planets: [Handle<Image>; 8],

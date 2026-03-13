@@ -21,26 +21,21 @@ pub fn missile_collision(
 
         // Check timeout
         if body.flight < 0 {
-            let visible = body.pos.0 >= 0.0
-                && body.pos.0 <= 800.0
-                && body.pos.1 >= 0.0
-                && body.pos.1 <= 600.0;
-            if !visible {
+            if !is_on_screen(body.pos) {
                 info!("Missile timed out (off-screen)");
                 marker.active = false;
                 turn.firing = false;
-                turn.current_player = 3 - turn.last_player;
+                turn.current_player = turn.other_player();
                 continue;
             }
         }
 
         // Check out of extended range
-        if body.pos.0 < -800.0 || body.pos.0 > 2400.0 || body.pos.1 < -600.0 || body.pos.1 > 1800.0
-        {
+        if !is_in_extended_range(body.pos) {
             info!("Missile out of range");
             marker.active = false;
             turn.firing = false;
-            turn.current_player = 3 - turn.last_player;
+            turn.current_player = turn.other_player();
             continue;
         }
 
@@ -164,11 +159,7 @@ pub fn particle_collision(
             continue;
         }
 
-        let in_range = body.pos.0 >= -800.0
-            && body.pos.0 <= 2400.0
-            && body.pos.1 >= -600.0
-            && body.pos.1 <= 1800.0;
-        if !in_range {
+        if !is_in_extended_range(body.pos) {
             commands.entity(entity).despawn();
             continue;
         }

@@ -6,5 +6,4 @@ pub enum HitType {
     Planet,
     Blackhole,
     Ship(u8),
-    Timeout,
 }

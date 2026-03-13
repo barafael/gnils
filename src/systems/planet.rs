@@ -4,6 +4,7 @@ use rand::Rng;
 use crate::components::Planet;
 use crate::constants::*;
 use crate::resources::*;
+use crate::systems::player::pygame_to_bevy;
 
 pub fn spawn_planets(
     mut commands: Commands,
@@ -70,9 +71,7 @@ pub fn spawn_planets(
         let texture_index = (n - 1) as usize;
         let sprite_size = (2.0 * radius / 0.96) as f32;
 
-        // Convert pygame coords to bevy coords
-        let bevy_x = x as f32 - WINDOW_WIDTH / 2.0;
-        let bevy_y = WINDOW_HEIGHT / 2.0 - y as f32;
+        let bevy_pos = pygame_to_bevy(x, y);
 
         commands.spawn((
             Sprite {
@@ -80,12 +79,11 @@ pub fn spawn_planets(
                 custom_size: Some(Vec2::new(sprite_size, sprite_size)),
                 ..default()
             },
-            Transform::from_xyz(bevy_x, bevy_y, 2.0),
+            Transform::from_xyz(bevy_pos.x, bevy_pos.y, 2.0),
             Planet {
                 mass,
                 radius,
                 pos: Vec2::new(x as f32, y as f32),
-                planet_n: n,
                 is_blackhole: false,
             },
         ));

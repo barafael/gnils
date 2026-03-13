@@ -116,8 +116,7 @@ pub fn update_missile_visibility(
             *vis = Visibility::Hidden;
             continue;
         }
-        let on_screen =
-            body.pos.0 >= 0.0 && body.pos.0 <= 800.0 && body.pos.1 >= 0.0 && body.pos.1 <= 600.0;
+        let on_screen = is_on_screen(body.pos);
         *vis = if on_screen {
             Visibility::Visible
         } else {
