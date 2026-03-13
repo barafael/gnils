@@ -10,7 +10,7 @@ use crate::trail;
 /// Called when turn.firing is set to true by the input system.
 pub fn fire_missile(
     mut missile_q: Query<(&mut GravityBody, &mut MissileMarker, &mut Visibility)>,
-    players: Query<(&Player, &Transform)>,
+    mut players: Query<(&mut Player, &Transform)>,
     mut turn: ResMut<TurnState>,
     settings: Res<GameSettings>,
 ) {
@@ -36,15 +36,16 @@ pub fn fire_missile(
     let mut trail_color = PLAYER1_COLOR;
     let mut power_penalty = 0;
 
-    for (player, transform) in players.iter() {
+    for (mut player, transform) in players.iter_mut() {
         if player.id != current {
             continue;
         }
-        launch_pos = get_launch_point_from_transform(player, transform);
+        launch_pos = get_launch_point_from_transform(&player, transform);
         speed = player.power;
         angle_rad = player.angle.to_radians();
         trail_color = player.color_rgb;
         power_penalty = -(PENALTY_FACTOR * speed) as i32;
+        player.attempts += 1;
     }
 
     for (mut body, mut marker, mut vis) in missile_q.iter_mut() {

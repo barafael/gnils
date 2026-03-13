@@ -60,19 +60,23 @@ pub fn particle_gravity(
 }
 
 /// Sync GravityBody positions to Bevy Transform for rendering.
+/// Only updates position — visibility is managed by dedicated systems.
 pub fn sync_transforms(
-    mut query: Query<
-        (&GravityBody, &mut Transform, &mut Visibility),
-        Or<(With<MissileMarker>, With<ParticleMarker>)>,
-    >,
+    mut missiles: Query<(&GravityBody, &MissileMarker, &mut Transform), Without<ParticleMarker>>,
+    mut particles: Query<(&GravityBody, &mut Transform), With<ParticleMarker>>,
 ) {
-    for (body, mut transform, mut visibility) in query.iter_mut() {
+    for (body, marker, mut transform) in missiles.iter_mut() {
+        if !marker.active {
+            continue;
+        }
         let bevy_pos = pygame_to_bevy(body.pos.0, body.pos.1);
         transform.translation.x = bevy_pos.x;
         transform.translation.y = bevy_pos.y;
+    }
 
-        if is_on_screen(body.pos) {
-            *visibility = Visibility::Inherited;
-        }
+    for (body, mut transform) in particles.iter_mut() {
+        let bevy_pos = pygame_to_bevy(body.pos.0, body.pos.1);
+        transform.translation.x = bevy_pos.x;
+        transform.translation.y = bevy_pos.y;
     }
 }

@@ -73,7 +73,6 @@ pub fn round_over_input(
     mut turn: ResMut<TurnState>,
     mut players: Query<&mut Player>,
     mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
-    settings: Res<GameSettings>,
     trail_canvas: Res<TrailCanvas>,
     mut images: ResMut<Assets<Image>>,
     mut next_state: ResMut<NextState<GamePhase>>,
@@ -83,13 +82,13 @@ pub fn round_over_input(
     }
 
     if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) {
-        // Handle advance round directly here instead of via event
-
-        // Check if game over (max rounds reached)
-        if settings.max_rounds > 0 && turn.round >= settings.max_rounds {
-            turn.game_over = true;
-            next_state.set(GamePhase::GameOver);
-            return;
+        // If game is over, reset scores and start a new game
+        if turn.game_over {
+            for mut player in players.iter_mut() {
+                player.score = 0;
+            }
+            turn.round = 0;
+            turn.game_over = false;
         }
 
         // Clear trail

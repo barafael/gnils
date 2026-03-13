@@ -16,6 +16,7 @@ pub enum GamePhase {
 #[derive(Resource)]
 pub struct GameSettings {
     pub max_planets: u32,
+    pub max_blackholes: u32,
     pub bounce: bool,
     pub invisible: bool,
     pub particles_enabled: bool,
@@ -27,6 +28,7 @@ impl Default for GameSettings {
     fn default() -> Self {
         Self {
             max_planets: DEFAULT_MAX_PLANETS,
+            max_blackholes: 0,
             bounce: false,
             invisible: false,
             particles_enabled: true,
@@ -97,9 +99,23 @@ pub struct GameAssets {
     pub blue_ship: Handle<Image>,
     pub ship_atlas_layout: Handle<TextureAtlasLayout>,
     pub shot: Handle<Image>,
+    pub explosion: Handle<Image>,
     pub explosion_10: Handle<Image>,
     pub explosion_5: Handle<Image>,
     pub planets: [Handle<Image>; 8],
+}
+
+/// Result of the last round (for end-round message display).
+#[derive(Resource, Default)]
+pub struct RoundResult {
+    pub hit_player: u8,       // who was hit (0 = no hit yet)
+    pub shooter: u8,           // who fired the shot
+    pub self_hit: bool,
+    pub hit_score: i32,
+    pub quick_bonus: i32,
+    pub power_penalty: i32,
+    pub total_score: i32,
+    pub message: String,       // e.g. "Player 1 hits Player 2!"
 }
 
 /// Queued particle spawn requests, processed each frame by the particle spawn system.

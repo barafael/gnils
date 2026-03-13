@@ -72,3 +72,12 @@ pub struct UiRoundInfo;
 #[derive(Component)]
 pub struct UiMissileStatus;
 
+#[derive(Component)]
+pub struct UiRoundOverlay;
+
+#[derive(Component)]
+pub struct UiDimOverlay;
+
+#[derive(Component)]
+pub struct UiEndRoundMsg;
+

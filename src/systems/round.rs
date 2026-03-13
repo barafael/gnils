@@ -13,6 +13,7 @@ pub fn handle_missile_impact(
     mut turn: ResMut<TurnState>,
     mut spawn_queue: ResMut<ParticleSpawnQueue>,
     settings: Res<GameSettings>,
+    mut round_result: ResMut<RoundResult>,
 ) {
     let impacts = std::mem::take(&mut impact_queue.impacts);
     for impact in impacts {
@@ -48,18 +49,29 @@ pub fn handle_missile_impact(
                 }
 
                 let last = turn.last_player;
+                let killed_self = last == hit_id;
                 let power_penalty = missile_q
                     .iter()
                     .next()
                     .map(|m| m.power_penalty)
                     .unwrap_or(0);
 
-                if last == hit_id {
+                if killed_self {
                     for mut player in players.iter_mut() {
                         if player.id == hit_id {
                             player.score -= SELF_HIT;
                         }
                     }
+                    *round_result = RoundResult {
+                        hit_player: hit_id,
+                        shooter: last,
+                        self_hit: true,
+                        hit_score: -(SELF_HIT),
+                        quick_bonus: 0,
+                        power_penalty: 0,
+                        total_score: -(SELF_HIT),
+                        message: format!("Player {} hit themselves!", last),
+                    };
                 } else {
                     let mut bonus = 0;
                     for player in players.iter() {
@@ -79,12 +91,27 @@ pub fn handle_missile_impact(
                             player.score += score;
                         }
                     }
+                    *round_result = RoundResult {
+                        hit_player: hit_id,
+                        shooter: last,
+                        self_hit: false,
+                        hit_score: HIT_SCORE,
+                        quick_bonus: bonus,
+                        power_penalty,
+                        total_score: score,
+                        message: format!("Player {} hits Player {}!", last, hit_id),
+                    };
                 }
 
                 info!("Ship {} hit! Round over.", hit_id);
                 turn.round_over = true;
                 turn.firing = false;
-                turn.show_round = 100.0;
+
+                // Check if this was the final round — only game over gets the zoom text
+                if settings.max_rounds > 0 && turn.round >= settings.max_rounds {
+                    turn.game_over = true;
+                    turn.show_round = 100.0;
+                }
             }
         }
     }
@@ -97,13 +124,26 @@ fn end_shot(turn: &mut TurnState) {
     turn.firing = false;
 }
 
-/// Round setup: increment round counter and transition to aiming.
+/// Round setup: increment round counter, randomize player positions, and transition to aiming.
 pub fn round_setup(
     mut turn: ResMut<TurnState>,
     mut next_state: ResMut<NextState<GamePhase>>,
     settings: Res<GameSettings>,
+    mut players: Query<(&mut Player, &mut Transform)>,
 ) {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+
     turn.round += 1;
+
+    // Randomize player Y positions each round (matching Python's player.init())
+    for (player, mut transform) in players.iter_mut() {
+        let y_pygame = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
+        let x_pygame = if player.id == 1 { 40.0 } else { 760.0 };
+        let bevy_pos = crate::systems::player::pygame_to_bevy(x_pygame, y_pygame);
+        transform.translation.x = bevy_pos.x;
+        transform.translation.y = bevy_pos.y;
+    }
 
     if settings.invisible {
         turn.show_planets = 100.0;

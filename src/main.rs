@@ -34,6 +34,7 @@ fn main() {
         .insert_resource(BounceAnimation::default())
         .insert_resource(ParticleSpawnQueue::default())
         .insert_resource(MissileImpactQueue::default())
+        .insert_resource(RoundResult::default())
         // Startup systems (run once)
         .add_systems(
             Startup,
@@ -123,18 +124,25 @@ fn main() {
             Update,
             (
                 systems::player::update_player_sprites,
+                systems::player::update_ship_explosion,
                 systems::player::draw_aim_line,
                 systems::player::update_ui_text,
                 systems::physics::sync_transforms,
                 systems::missile::update_missile_visibility,
                 systems::missile::update_missile_ui,
                 systems::rendering::update_bounce_animation,
-                systems::rendering::draw_bounce_border,
             ),
         )
         .add_systems(
             Update,
-            systems::rendering::update_ui_visibility,
+            (
+                systems::rendering::draw_bounce_border,
+                systems::rendering::draw_zoom_view,
+                systems::rendering::update_ui_visibility,
+                systems::rendering::update_round_overlay,
+                systems::rendering::update_round_over_display,
+                systems::rendering::update_planet_visibility,
+            ),
         )
         .run();
 }

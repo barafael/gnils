@@ -33,6 +33,7 @@ pub fn load_assets(
         blue_ship: asset_server.load("blue_ship.png"),
         ship_atlas_layout,
         shot: asset_server.load("shot.png"),
+        explosion: asset_server.load("explosion.png"),
         explosion_10: asset_server.load("explosion-10.png"),
         explosion_5: asset_server.load("explosion-5.png"),
         planets: [
@@ -263,4 +264,81 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
         Visibility::Hidden,
         UiMissileStatus,
     ));
+
+    // Round overlay text (centered, zooming "Round N" text, z=10)
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(0.0),
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Visibility::Hidden,
+            ZIndex(10),
+            UiRoundOverlay,
+        ))
+        .with_children(|parent| {
+            parent.spawn((
+                Text::new("Round 1"),
+                TextFont {
+                    font: assets.font.clone(),
+                    font_size: 48.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+            ));
+        });
+
+    // End round message container (centered box with dark background)
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(0.0),
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            Visibility::Hidden,
+            ZIndex(10),
+            UiEndRoundMsg,
+        ))
+        .with_children(|parent| {
+            // Dark box with border
+            parent
+                .spawn((
+                    Node {
+                        padding: UiRect::axes(Val::Px(50.0), Val::Px(35.0)),
+                        border: UiRect::all(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 175.0 / 255.0)),
+                    BorderColor::all(Color::srgb(
+                        150.0 / 255.0,
+                        150.0 / 255.0,
+                        150.0 / 255.0,
+                    )),
+                ))
+                .with_children(|box_parent| {
+                    // Text inside the box
+                    box_parent.spawn((
+                        Text::new(""),
+                        TextFont {
+                            font: assets.font.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                        UiDimOverlay, // reuse as marker for the text node
+                    ));
+                });
+        });
 }
