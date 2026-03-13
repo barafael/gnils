@@ -34,7 +34,7 @@ jobs:
           cargo binstall trunk -y
 
       - name: Build WASM
-        run: trunk build --release web/index.html
+        run: trunk build web/index.html --release
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
