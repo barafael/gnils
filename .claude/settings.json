@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(cargo check:*)"
+    ],
+    "additionalDirectories": [
+      "C:\\workspace\\sources\\gnils\\slingshot\\src\\slingshot\\data"
+    ]
+  }
+}
