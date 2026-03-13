@@ -29,9 +29,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install trunk
-        run: |
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-          cargo binstall trunk -y
+        run: cargo install --locked trunk
 
       - name: Build WASM
         run: trunk build --release --public-url "/${{ github.event.repository.name }}/"
