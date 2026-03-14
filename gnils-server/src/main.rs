@@ -269,13 +269,11 @@ fn launch_missile(state: &mut RoundState, angle: f64, power: f64, settings: &Gam
     state.player_attempts[idx] += 1;
     let x = if state.active_player == 1 { PLAYER1_X } else { PLAYER2_X };
     let gun = if state.active_player == 1 { GUN_OFFSET_P1 } else { GUN_OFFSET_P2 };
-    // angle is radians CCW from east (Bevy-native convention)
-    let launch_x = x + gun * angle.cos();
-    let launch_y = state.player_y[idx] + gun * angle.sin();
+    let launch_pos = compute_launch_point(x, state.player_y[idx], gun, angle);
     state.missile = BodySnapshot {
-        pos: (launch_x, launch_y),
-        vel: (MISSILE_SPEED_SCALE * power * angle.cos(), MISSILE_SPEED_SCALE * power * angle.sin()),
-        last_pos: (launch_x, launch_y),
+        pos: launch_pos,
+        vel: compute_launch_velocity(power, angle),
+        last_pos: launch_pos,
         flight: settings.max_flight,
         active: true,
     };

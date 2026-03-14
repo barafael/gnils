@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use gnils_protocol::compute_launch_velocity;
+
 use crate::components::*;
 use crate::constants::*;
 use crate::resources::*;
@@ -51,10 +53,8 @@ pub fn fire_missile(
     for (mut body, mut marker, mut vis) in missile_q.iter_mut() {
         body.pos = launch_pos;
         body.last_pos = launch_pos;
-        body.velocity = (
-            0.1 * speed * angle.cos(),
-            0.1 * speed * angle.sin(),
-        );
+        let vel = compute_launch_velocity(speed, angle);
+        body.velocity = vel;
         body.flight = settings.max_flight;
 
         marker.active = true;
@@ -64,14 +64,10 @@ pub fn fire_missile(
         *vis = Visibility::Visible;
     }
 
+    let vel = compute_launch_velocity(speed, angle);
     info!(
         "Player {} fires: pos=({:.1},{:.1}) vel=({:.2},{:.2}) power={:.1}",
-        current,
-        launch_pos.0,
-        launch_pos.1,
-        0.1 * speed * angle.cos(),
-        0.1 * speed * angle.sin(),
-        speed
+        current, launch_pos.0, launch_pos.1, vel.0, vel.1, speed
     );
     turn.last_player = current;
     turn.current_player = 0; // no player active while firing

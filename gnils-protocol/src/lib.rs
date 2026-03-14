@@ -210,6 +210,18 @@ pub fn is_in_extended_range(pos: (f64, f64)) -> bool {
         && pos.1 >= -3.0 * WORLD_HALF_H && pos.1 <= 3.0 * WORLD_HALF_H
 }
 
+/// Compute the gun barrel tip position given the ship center and aim angle.
+/// `angle` is radians CCW from east (Bevy-native convention).
+pub fn compute_launch_point(ship_x: f64, ship_y: f64, gun_offset: f64, angle: f64) -> (f64, f64) {
+    (ship_x + gun_offset * angle.cos(), ship_y + gun_offset * angle.sin())
+}
+
+/// Compute initial missile velocity from power and aim angle.
+/// `angle` is radians CCW from east (Bevy-native convention).
+pub fn compute_launch_velocity(power: f64, angle: f64) -> (f64, f64) {
+    (MISSILE_SPEED_SCALE * power * angle.cos(), MISSILE_SPEED_SCALE * power * angle.sin())
+}
+
 /// Reflect a missile off the screen boundaries in-place, interpolating the
 /// perpendicular axis to the exact wall-crossing point.
 pub fn apply_bounce(m: &mut BodySnapshot) {

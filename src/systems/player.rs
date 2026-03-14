@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use gnils_protocol::compute_launch_point;
 
 use crate::components::*;
 use crate::resources::*;
@@ -217,10 +218,10 @@ pub fn update_ui_text(
 /// Get launch point using player data and transform (Bevy coords, center origin, Y-up).
 /// `player.angle` is radians CCW from east.
 pub fn get_launch_point_from_transform(player: &Player, transform: &Transform) -> (f64, f64) {
-    let cx = transform.translation.x as f64;
-    let cy = transform.translation.y as f64;
-    (
-        cx + player.gun_offset * player.angle.cos(),
-        cy + player.gun_offset * player.angle.sin(),
+    compute_launch_point(
+        transform.translation.x as f64,
+        transform.translation.y as f64,
+        player.gun_offset,
+        player.angle,
     )
 }
