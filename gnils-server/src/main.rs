@@ -413,50 +413,7 @@ fn check_game_over(round: u32, s: &GameSettingsData) -> bool {
     s.max_rounds > 0 && round >= s.max_rounds
 }
 
-fn generate_planets(settings: &GameSettingsData, rng: &mut impl Rng) -> Vec<PlanetData> {
-    let mut placed: Vec<(f64,f64,f64,f64)> = Vec::new();
-    let mut out = Vec::new();
-    if settings.max_blackholes > 0 {
-        for _ in 0..rng.gen_range(1..=settings.max_blackholes) {
-            for _ in 0..1000 {
-                let mass = rng.gen_range(BLACKHOLE_MASS_MIN..=BLACKHOLE_MASS_MAX);
-                let radius = 1.0_f64;
-                let margin = 3.0 * PLANET_SHIP_DISTANCE;
-                let x = rng.gen_range((-WORLD_HALF_W + margin + radius)..=(WORLD_HALF_W - margin - radius));
-                let edge_margin = 3.0 * PLANET_EDGE_DISTANCE;
-                let y = rng.gen_range((-WORLD_HALF_H + edge_margin + radius)..=(WORLD_HALF_H - edge_margin - radius));
-                if no_overlap(x,y,radius,mass,&placed) {
-                    placed.push((x,y,radius,mass));
-                    out.push(PlanetData{mass,radius,pos:(x,y),is_blackhole:true,texture_index:0});
-                    break;
-                }
-            }
-        }
-    } else {
-        let n = rng.gen_range(2..=settings.max_planets.max(2));
-        let mut used: Vec<u8> = Vec::new();
-        for _ in 0..n {
-            for _ in 0..1000 {
-                let mass = rng.gen_range(PLANET_MASS_MIN..=PLANET_MASS_MAX);
-                let radius = mass.powf(PLANET_RADIUS_EXPONENT) * PLANET_RADIUS_SCALE;
-                let x = rng.gen_range((-WORLD_HALF_W + PLANET_SHIP_DISTANCE + radius)..=(WORLD_HALF_W - PLANET_SHIP_DISTANCE - radius));
-                let y = rng.gen_range((-WORLD_HALF_H + PLANET_EDGE_DISTANCE + radius)..=(WORLD_HALF_H - PLANET_EDGE_DISTANCE - radius));
-                if no_overlap(x,y,radius,mass,&placed) {
-                    let mut ti = rng.gen_range(0..8u8);
-                    for _ in 0..20 { if !used.contains(&ti){break;} ti=rng.gen_range(0..8u8); }
-                    used.push(ti); placed.push((x,y,radius,mass));
-                    out.push(PlanetData{mass,radius,pos:(x,y),is_blackhole:false,texture_index:ti});
-                    break;
-                }
-            }
-        }
-    }
-    out
-}
-
-fn no_overlap(x:f64,y:f64,r:f64,m:f64,placed:&[(f64,f64,f64,f64)])->bool{
-    placed.iter().all(|&(px,py,pr,pm)| ((x-px).powi(2)+(y-py).powi(2)).sqrt() >= (r+pr)*PLANET_OVERLAP_SCALE+PLANET_OVERLAP_MASS_K*(m+pm))
-}
+// generate_planets is provided by gnils_protocol::generate_planets (imported via use gnils_protocol::*)
 
 fn main() {
     App::new()

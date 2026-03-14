@@ -23,6 +23,7 @@ use gnils_protocol::*;
 
 use crate::components::*;
 use crate::resources::*;
+use crate::systems::planet::spawn_planet_entities;
 
 // ── Channels (must match server) ──────────────────────────────────────────────
 
@@ -280,30 +281,12 @@ fn handle_round_setup(
 
     // Spawn new planets
     let Some(ga) = assets else { return };
-    for planet in planets {
-        let px = planet.pos.0 as f32;
-        let py = planet.pos.1 as f32;
-        if planet.is_blackhole {
-            commands.spawn((
-                Sprite { color: Color::srgba(0., 0., 0., 0.), custom_size: Some(Vec2::new(2., 2.)), ..default() },
-                Transform::from_xyz(px, py, 2.0),
-                Planet { mass: planet.mass, radius: planet.radius, pos: Vec2::new(px, py), is_blackhole: true },
-            ));
-        } else {
-            let ti = planet.texture_index as usize;
-            let sprite_size = (2.0 * planet.radius / 0.96) as f32;
-            commands.spawn((
-                Sprite { image: ga.planets[ti].clone(), custom_size: Some(Vec2::new(sprite_size, sprite_size)), ..default() },
-                Transform::from_xyz(px, py, 2.0),
-                Planet { mass: planet.mass, radius: planet.radius, pos: Vec2::new(px, py), is_blackhole: false },
-            ));
-        }
-    }
+    spawn_planet_entities(commands, ga, &planets);
 
     // Position players
     for (player, mut transform) in players.iter_mut() {
         let y = player_y[(player.id - 1) as usize];
-        let x = if player.id == 1 { -360.0_f64 } else { 360.0_f64 };
+        let x = if player.id == 1 { PLAYER1_X } else { PLAYER2_X };
         transform.translation.x = x as f32;
         transform.translation.y = y as f32;
     }
