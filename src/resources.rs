@@ -10,7 +10,6 @@ pub enum GamePhase {
     Aiming,
     Firing,
     RoundOver,
-    GameOver,
 }
 
 #[derive(Resource)]

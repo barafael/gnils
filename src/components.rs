@@ -95,3 +95,7 @@ pub struct UiEndRoundMsg;
 #[derive(Component)]
 pub struct UiMenuOverlay;
 
+/// Text node inside the settings menu overlay.
+#[derive(Component)]
+pub struct UiMenuText;
+

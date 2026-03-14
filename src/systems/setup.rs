@@ -368,7 +368,7 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
                     ..default()
                 },
                 TextColor(Color::WHITE),
-                crate::components::UiMenuOverlay,
+                crate::components::UiMenuText,
             ));
         });
     });

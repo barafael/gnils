@@ -311,18 +311,24 @@ pub fn update_round_over_display(
     }
 }
 
-/// Show the settings menu overlay and update its text content each frame.
+/// Show the settings menu overlay and update its text content.
+/// Text is only rebuilt when menu state or settings actually change.
 pub fn update_menu_display(
     settings: Res<GameSettings>,
     menu: Res<MenuOpen>,
     mut vis_q: Query<&mut Visibility, With<UiMenuOverlay>>,
-    mut text_q: Query<&mut Text, With<UiMenuOverlay>>,
+    mut text_q: Query<&mut Text, With<crate::components::UiMenuText>>,
 ) {
     for mut vis in vis_q.iter_mut() {
         *vis = if menu.open { Visibility::Visible } else { Visibility::Hidden };
     }
 
     if !menu.open {
+        return;
+    }
+
+    // Only rebuild text when something actually changed
+    if !menu.is_changed() && !settings.is_changed() {
         return;
     }
 

@@ -84,41 +84,17 @@ pub fn round_over_input(
             turn.game_over = false;
         }
 
-        if let Some(image) = images.get_mut(&trail_canvas.image_handle) {
-            crate::trail::clear_trail(image);
-        }
-
+        // Pick who goes first (lower score)
         let mut p1_score = 0;
         let mut p2_score = 0;
         for player in players.iter() {
             if player.id == 1 { p1_score = player.score; }
             else { p2_score = player.score; }
         }
+        if p1_score < p2_score { turn.current_player = 1; }
+        else if p2_score < p1_score { turn.current_player = 2; }
 
-        if p1_score < p2_score {
-            turn.current_player = 1;
-        } else if p2_score < p1_score {
-            turn.current_player = 2;
-        }
-
-        turn.round_over = false;
-        turn.firing = false;
-        turn.show_round = 100.0;
-
-        for mut player in players.iter_mut() {
-            player.power = 100.0;
-            player.shot = false;
-            player.attempts = 0;
-            player.explosion_frame = 0;
-            player.rel_rot = 0.01;
-            if player.id == 1 { player.angle = 90.0; } else { player.angle = 270.0; }
-        }
-
-        for (mut marker, mut vis) in missile_q.iter_mut() {
-            marker.active = false;
-            *vis = Visibility::Hidden;
-        }
-
+        reset_for_new_round(&mut turn, &mut players, &mut missile_q, &trail_canvas, &mut images);
         next_state.set(GamePhase::RoundSetup);
     }
 }
@@ -137,7 +113,7 @@ pub fn menu_toggle_input(
         if allowed {
             menu.open = !menu.open;
             if menu.open {
-                menu.selected = 0; // always reset to "Resume"
+                menu.selected = 0;
             }
         }
     }
@@ -153,13 +129,14 @@ pub fn menu_nav_input(
     mut next_state: ResMut<NextState<GamePhase>>,
     trail_canvas: Res<TrailCanvas>,
     mut images: ResMut<Assets<Image>>,
+    mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
     mut window_q: Query<&mut Window>,
 ) {
     if !menu.open {
         return;
     }
 
-    // Number of selectable items (non-separator rows)
+    // Number of selectable (non-separator) items — must match rows in update_menu_display
     const N_ITEMS: usize = 10;
 
     if keys.just_pressed(KeyCode::ArrowDown) {
@@ -185,24 +162,12 @@ pub fn menu_nav_input(
         // New Game
         1 => {
             menu.open = false;
-            // Clear trail
-            if let Some(image) = images.get_mut(&trail_canvas.image_handle) {
-                crate::trail::clear_trail(image);
-            }
             for mut player in players.iter_mut() {
                 player.score = 0;
-                player.power = 100.0;
-                player.shot = false;
-                player.attempts = 0;
-                player.explosion_frame = 0;
-                player.rel_rot = 0.01;
-                if player.id == 1 { player.angle = 90.0; } else { player.angle = 270.0; }
             }
             turn.round = 0;
-            turn.round_over = false;
-            turn.firing = false;
             turn.game_over = false;
-            turn.show_round = 100.0;
+            reset_for_new_round(&mut turn, &mut players, &mut missile_q, &trail_canvas, &mut images);
             next_state.set(GamePhase::RoundSetup);
         }
         // Bounce
@@ -229,7 +194,7 @@ pub fn menu_nav_input(
                 (settings.max_blackholes + 1) % 4
             };
         }
-        // Rounds (cycle 0=∞ → 5 → 10 → 20 → 0)
+        // Rounds (cycle ∞→5→10→20→∞)
         8 => {
             let options = [0u32, 5, 10, 20];
             let idx = options.iter().position(|&v| v == settings.max_rounds).unwrap_or(0);
@@ -252,5 +217,36 @@ pub fn menu_nav_input(
             }
         }
         _ => {}
+    }
+}
+
+/// Shared reset for starting a fresh round: clear trail, reset player states, deactivate missile.
+fn reset_for_new_round(
+    turn: &mut TurnState,
+    players: &mut Query<&mut Player, Without<ShipBlendSprite>>,
+    missile_q: &mut Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
+    trail_canvas: &TrailCanvas,
+    images: &mut Assets<Image>,
+) {
+    if let Some(image) = images.get_mut(&trail_canvas.image_handle) {
+        crate::trail::clear_trail(image);
+    }
+
+    turn.round_over = false;
+    turn.firing = false;
+    turn.show_round = 100.0;
+
+    for mut player in players.iter_mut() {
+        player.power = 100.0;
+        player.shot = false;
+        player.attempts = 0;
+        player.explosion_frame = 0;
+        player.rel_rot = 0.01;
+        if player.id == 1 { player.angle = 90.0; } else { player.angle = 270.0; }
+    }
+
+    for (mut marker, mut vis) in missile_q.iter_mut() {
+        marker.active = false;
+        *vis = Visibility::Hidden;
     }
 }
