@@ -187,7 +187,10 @@ fn build_lines(
         }
 
         LobbyScreen::NetworkSub => {
+            #[cfg(not(target_arch = "wasm32"))]
             const OPTS: &[&str] = &["Host", "Join", "Back"];
+            #[cfg(target_arch = "wasm32")]
+            const OPTS: &[&str] = &["Join", "Back"];
             let mut v = vec![UiLine::title("NETWORK"), UiLine::gap()];
             for (i, o) in OPTS.iter().enumerate() {
                 let t = if i == lobby.selected { format!("> {o}") } else { format!("  {o}") };
@@ -312,11 +315,15 @@ fn lobby_keyboard_input(
         }
 
         LobbyScreen::NetworkSub => {
-            const N: usize = 3;
+            #[cfg(not(target_arch = "wasm32"))]
+            const N: usize = 3; // Host / Join / Back
+            #[cfg(target_arch = "wasm32")]
+            const N: usize = 2; // Join / Back
             if just(KeyCode::ArrowDown)  { lobby.selected = (lobby.selected + 1) % N; }
             if just(KeyCode::ArrowUp)    { lobby.selected = (lobby.selected + N - 1) % N; }
             if just(KeyCode::Escape) { lobby.screen = LobbyScreen::Main; lobby.selected = 1; }
             if just(KeyCode::Enter) || just(KeyCode::Space) {
+                #[cfg(not(target_arch = "wasm32"))]
                 match lobby.selected {
                     0 => {
                         lobby.screen = LobbyScreen::Host;
@@ -326,6 +333,12 @@ fn lobby_keyboard_input(
                     }
                     1 => { lobby.screen = LobbyScreen::Join; lobby.selected = 0; }
                     2 => { lobby.screen = LobbyScreen::Main; lobby.selected = 1; }
+                    _ => {}
+                }
+                #[cfg(target_arch = "wasm32")]
+                match lobby.selected {
+                    0 => { lobby.screen = LobbyScreen::Join; lobby.selected = 0; }
+                    1 => { lobby.screen = LobbyScreen::Main; lobby.selected = 1; }
                     _ => {}
                 }
             }

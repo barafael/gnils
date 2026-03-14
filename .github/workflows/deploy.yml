@@ -15,6 +15,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: native-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: native-
+
+      - name: Check workspace (native)
+        run: cargo check --workspace
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -48,7 +68,7 @@ jobs:
           path: dist
 
   deploy:
-    needs: build
+    needs: [check, build]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
