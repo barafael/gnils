@@ -3344,6 +3344,7 @@ dependencies = [
  "bevy",
  "getrandom 0.2.17",
  "gnils-protocol",
+ "js-sys",
  "lightyear",
  "rand 0.8.5",
  "serde",
