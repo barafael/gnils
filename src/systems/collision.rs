@@ -5,6 +5,8 @@ use crate::constants::*;
 use crate::events::HitType;
 use crate::resources::*;
 
+use gnils_protocol::circle_line_intersect;
+
 /// Check missile collision with planets, ships, and boundaries.
 pub fn missile_collision(
     mut missile_q: Query<(&mut GravityBody, &mut MissileMarker)>,
@@ -198,34 +200,3 @@ pub fn particle_collision(
     }
 }
 
-/// Circle-line intersection matching the Python implementation.
-pub fn circle_line_intersect(
-    center: (f64, f64),
-    r: f64,
-    pos1: (f64, f64),
-    pos2: (f64, f64),
-) -> (f64, f64) {
-    let dx = pos2.0 - pos1.0;
-    let dy = pos2.1 - pos1.1;
-    let px = pos1.0;
-    let py = pos1.1;
-    let cx = center.0;
-    let cy = center.1;
-
-    let a = dx * dx + dy * dy;
-    let b = 2.0 * (dx * px - dx * cx + dy * py - dy * cy);
-    let c = -2.0 * cx * px - 2.0 * cy * py + px * px + py * py + cx * cx + cy * cy - r * r;
-    let discriminant = b * b - 4.0 * a * c;
-
-    if discriminant < 0.0 {
-        return (4000.0, 3000.0);
-    }
-
-    let mut alpha = (-b + discriminant.sqrt()) / (2.0 * a);
-    if alpha > 1.0 {
-        alpha = (-b - discriminant.sqrt()) / (2.0 * a);
-    }
-    alpha -= 0.05;
-
-    (px + alpha * dx, py + alpha * dy)
-}
