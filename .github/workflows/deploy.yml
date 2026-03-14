@@ -55,9 +55,9 @@ jobs:
           restore-keys: wasm-
 
       - name: Install trunk
-        run: |
-          TRUNK_VERSION=$(curl -sL https://api.github.com/repos/trunk-rs/trunk/releases/latest | jq -r '.tag_name')
-          curl -sL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" | tar xz -C /usr/local/bin
+        uses: jetli/trunk-action@v0.5.0
+        with:
+          version: latest
 
       - name: Build WASM
         run: cd gnils-client && trunk build --release --public-url "/${{ github.event.repository.name }}/"
