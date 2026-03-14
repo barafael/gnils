@@ -244,7 +244,7 @@ fn tick_round_setup(
     state.round += 1;
     state.player_attempts = [0, 0];
     let mut rng = rand::thread_rng();
-    state.player_y = [rng.gen_range(-200.0..=200.0), rng.gen_range(-200.0..=200.0)];
+    state.player_y = [rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX), rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX)];
     state.active_player = if state.round == 1 { 1 }
         else if state.scores[0] < state.scores[1] { 1 }
         else if state.scores[1] < state.scores[0] { 2 }
@@ -267,19 +267,19 @@ fn tick_round_setup(
 fn launch_missile(state: &mut RoundState, angle: f64, power: f64, settings: &GameSettingsData) {
     let idx = (state.active_player - 1) as usize;
     state.player_attempts[idx] += 1;
-    let x = if state.active_player == 1 { -360.0 } else { 360.0 };
+    let x = if state.active_player == 1 { PLAYER1_X } else { PLAYER2_X };
     let gun = if state.active_player == 1 { GUN_OFFSET_P1 } else { GUN_OFFSET_P2 };
     // angle is radians CCW from east (Bevy-native convention)
     let launch_x = x + gun * angle.cos();
     let launch_y = state.player_y[idx] + gun * angle.sin();
     state.missile = BodySnapshot {
         pos: (launch_x, launch_y),
-        vel: (0.1 * power * angle.cos(), 0.1 * power * angle.sin()),
+        vel: (MISSILE_SPEED_SCALE * power * angle.cos(), MISSILE_SPEED_SCALE * power * angle.sin()),
         last_pos: (launch_x, launch_y),
         flight: settings.max_flight,
         active: true,
     };
-    state.trail_color = if state.active_player == 1 { (209, 170, 133) } else { (132, 152, 192) };
+    state.trail_color = if state.active_player == 1 { PLAYER1_COLOR } else { PLAYER2_COLOR };
 }
 
 fn tick_simulation(
@@ -355,8 +355,8 @@ struct ColInfo { pos: (f64, f64), kind: ColKind }
 enum ColKind { Planet, Blackhole, Ship(u8), Miss }
 
 fn check_collisions(m: &BodySnapshot, planets: &[PlanetData], py: &[f64; 2], active_player: u8, s: &GameSettingsData) -> Option<ColInfo> {
-    if m.flight < 0 && !on_screen(m.pos) { return Some(ColInfo { pos: m.pos, kind: ColKind::Miss }); }
-    if !in_range(m.pos)                  { return Some(ColInfo { pos: m.pos, kind: ColKind::Miss }); }
+    if m.flight < 0 && !is_on_screen(m.pos) { return Some(ColInfo { pos: m.pos, kind: ColKind::Miss }); }
+    if !is_in_extended_range(m.pos)         { return Some(ColInfo { pos: m.pos, kind: ColKind::Miss }); }
     for p in planets {
         let d2 = (m.pos.0-p.pos.0).powi(2)+(m.pos.1-p.pos.1).powi(2);
         if p.is_blackhole { if d2 <= p.mass*p.mass { return Some(ColInfo { pos: m.pos, kind: ColKind::Blackhole }); } }
@@ -369,21 +369,18 @@ fn check_collisions(m: &BodySnapshot, planets: &[PlanetData], py: &[f64; 2], act
         let ship_id = (i + 1) as u8;
         // Grace period: skip the launching player for the first few ticks to avoid
         // self-hit on launch (gun tip is inside the bounding box at t=0).
-        if ship_id == active_player && m.flight > s.max_flight - 5 { continue; }
-        let x = if i==0 { -360.0 } else { 360.0 };
+        if ship_id == active_player && m.flight > s.max_flight - SELF_HIT_GRACE_TICKS { continue; }
+        let x = if i==0 { PLAYER1_X } else { PLAYER2_X };
         for step in 0..10 {
-            let tx = m.last_pos.0 + step as f64*0.1*m.vel.0;
-            let ty = m.last_pos.1 + step as f64*0.1*m.vel.1;
-            if tx>=x-20.0&&tx<=x+20.0&&ty>=y-16.5&&ty<=y+16.5 {
+            let tx = m.last_pos.0 + step as f64 * 0.1 * m.vel.0;
+            let ty = m.last_pos.1 + step as f64 * 0.1 * m.vel.1;
+            if tx>=x-SHIP_HALF_W&&tx<=x+SHIP_HALF_W&&ty>=y-SHIP_HALF_H&&ty<=y+SHIP_HALF_H {
                 return Some(ColInfo { pos: (tx,ty), kind: ColKind::Ship(ship_id) });
             }
         }
     }
     None
 }
-
-fn on_screen(p: (f64,f64))->bool{p.0>=-400.0&&p.0<=400.0&&p.1>=-300.0&&p.1<=300.0}
-fn in_range(p: (f64,f64))->bool{p.0>=-1200.0&&p.0<=1200.0&&p.1>=-900.0&&p.1<=900.0}
 
 fn apply_bounce(m: &mut BodySnapshot) {
     macro_rules! bounce_axis {
@@ -395,10 +392,10 @@ fn apply_bounce(m: &mut BodySnapshot) {
             }
         }
     }
-    bounce_axis!(m.pos.0, m.pos.1, m.last_pos.0, m.last_pos.1, m.vel.0,  400.0,  1.0);
-    bounce_axis!(m.pos.0, m.pos.1, m.last_pos.0, m.last_pos.1, m.vel.0, -400.0, -1.0);
-    bounce_axis!(m.pos.1, m.pos.0, m.last_pos.1, m.last_pos.0, m.vel.1,  300.0,  1.0);
-    bounce_axis!(m.pos.1, m.pos.0, m.last_pos.1, m.last_pos.0, m.vel.1, -300.0, -1.0);
+    bounce_axis!(m.pos.0, m.pos.1, m.last_pos.0, m.last_pos.1, m.vel.0,  WORLD_HALF_W,  1.0);
+    bounce_axis!(m.pos.0, m.pos.1, m.last_pos.0, m.last_pos.1, m.vel.0, -WORLD_HALF_W, -1.0);
+    bounce_axis!(m.pos.1, m.pos.0, m.last_pos.1, m.last_pos.0, m.vel.1,  WORLD_HALF_H,  1.0);
+    bounce_axis!(m.pos.1, m.pos.0, m.last_pos.1, m.last_pos.0, m.vel.1, -WORLD_HALF_H, -1.0);
 }
 
 fn resolve_hit(col: &ColInfo, active: u8, s: &GameSettingsData, flight: i32, player_attempts: &[u32; 2]) -> (HitResult, i32) {
@@ -409,16 +406,16 @@ fn resolve_hit(col: &ColInfo, active: u8, s: &GameSettingsData, flight: i32, pla
             let self_hit = *hit == active;
             let penalty = -(s.max_flight - flight.max(0));
             if self_hit {
-                (HitResult::Ship { hit_player: *hit, shooter: active, self_hit: true }, -2000)
+                (HitResult::Ship { hit_player: *hit, shooter: active, self_hit: true }, -SELF_HIT)
             } else {
                 let victim_attempts = player_attempts[(*hit - 1) as usize];
                 let quick_bonus = match victim_attempts {
-                    1 => 500,
-                    2 => 200,
-                    3 => 100,
+                    1 => QUICK_SCORE_1,
+                    2 => QUICK_SCORE_2,
+                    3 => QUICK_SCORE_3,
                     _ => 0,
                 };
-                (HitResult::Ship { hit_player: *hit, shooter: active, self_hit: false }, 1500 + penalty + quick_bonus)
+                (HitResult::Ship { hit_player: *hit, shooter: active, self_hit: false }, HIT_SCORE + penalty + quick_bonus)
             }
         }
     }
@@ -438,8 +435,12 @@ fn generate_planets(settings: &GameSettingsData, rng: &mut impl Rng) -> Vec<Plan
     if settings.max_blackholes > 0 {
         for _ in 0..rng.gen_range(1..=settings.max_blackholes) {
             for _ in 0..1000 {
-                let mass=rng.gen_range(600.0..=700.0f64); let radius=1.0;
-                let x=rng.gen_range(-175.0..=175.0f64); let y=rng.gen_range(-150.0..=150.0f64);
+                let mass = rng.gen_range(BLACKHOLE_MASS_MIN..=BLACKHOLE_MASS_MAX);
+                let radius = 1.0_f64;
+                let margin = 3.0 * PLANET_SHIP_DISTANCE;
+                let x = rng.gen_range((-WORLD_HALF_W + margin + radius)..=(WORLD_HALF_W - margin - radius));
+                let edge_margin = 3.0 * PLANET_EDGE_DISTANCE;
+                let y = rng.gen_range((-WORLD_HALF_H + edge_margin + radius)..=(WORLD_HALF_H - edge_margin - radius));
                 if no_overlap(x,y,radius,mass,&placed) {
                     placed.push((x,y,radius,mass));
                     out.push(PlanetData{mass,radius,pos:(x,y),is_blackhole:true,texture_index:0});
@@ -448,15 +449,16 @@ fn generate_planets(settings: &GameSettingsData, rng: &mut impl Rng) -> Vec<Plan
             }
         }
     } else {
-        let n=rng.gen_range(2..=settings.max_planets.max(2));
-        let mut used:Vec<u8>=Vec::new();
+        let n = rng.gen_range(2..=settings.max_planets.max(2));
+        let mut used: Vec<u8> = Vec::new();
         for _ in 0..n {
             for _ in 0..1000 {
-                let mass=rng.gen_range(8.0..=512.0f64); let radius=mass.powf(1.0/3.0)*12.5;
-                let x=rng.gen_range((-325.0+radius)..=(325.0-radius));
-                let y=rng.gen_range((-250.0+radius)..=(250.0-radius));
+                let mass = rng.gen_range(PLANET_MASS_MIN..=PLANET_MASS_MAX);
+                let radius = mass.powf(PLANET_RADIUS_EXPONENT) * PLANET_RADIUS_SCALE;
+                let x = rng.gen_range((-WORLD_HALF_W + PLANET_SHIP_DISTANCE + radius)..=(WORLD_HALF_W - PLANET_SHIP_DISTANCE - radius));
+                let y = rng.gen_range((-WORLD_HALF_H + PLANET_EDGE_DISTANCE + radius)..=(WORLD_HALF_H - PLANET_EDGE_DISTANCE - radius));
                 if no_overlap(x,y,radius,mass,&placed) {
-                    let mut ti=rng.gen_range(0..8u8);
+                    let mut ti = rng.gen_range(0..8u8);
                     for _ in 0..20 { if !used.contains(&ti){break;} ti=rng.gen_range(0..8u8); }
                     used.push(ti); placed.push((x,y,radius,mass));
                     out.push(PlanetData{mass,radius,pos:(x,y),is_blackhole:false,texture_index:ti});
@@ -469,7 +471,7 @@ fn generate_planets(settings: &GameSettingsData, rng: &mut impl Rng) -> Vec<Plan
 }
 
 fn no_overlap(x:f64,y:f64,r:f64,m:f64,placed:&[(f64,f64,f64,f64)])->bool{
-    placed.iter().all(|&(px,py,pr,pm)| ((x-px).powi(2)+(y-py).powi(2)).sqrt() >= (r+pr)*1.5+0.1*(m+pm))
+    placed.iter().all(|&(px,py,pr,pm)| ((x-px).powi(2)+(y-py).powi(2)).sqrt() >= (r+pr)*PLANET_OVERLAP_SCALE+PLANET_OVERLAP_MASS_K*(m+pm))
 }
 
 fn main() {

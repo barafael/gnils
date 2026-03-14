@@ -12,6 +12,71 @@ pub const PRIVATE_KEY: [u8; 32] = [0u8; 32];
 pub const GUN_OFFSET_P1: f64 = 22.0; // rect.right  - rect.centerx + 2 = 20 + 2
 pub const GUN_OFFSET_P2: f64 = 23.0; // rect.centerx - rect.left   + 3 = 20 + 3
 
+// ── World / physics constants ───────────────────────────────────────────────
+
+/// Bevy-space screen half-extents (center origin, Y-up).
+pub const WORLD_HALF_W: f64 = 400.0;
+pub const WORLD_HALF_H: f64 = 300.0;
+
+/// Player spawn X positions (fixed, left and right of screen).
+pub const PLAYER1_X: f64 = -360.0;
+pub const PLAYER2_X: f64 = 360.0;
+
+/// Player trail / UI colors (RGB).
+pub const PLAYER1_COLOR: (u8, u8, u8) = (209, 170, 133);
+pub const PLAYER2_COLOR: (u8, u8, u8) = (132, 152, 192);
+
+/// Player Y spawn range (Bevy-space).
+pub const PLAYER_Y_MIN: f64 = -200.0;
+pub const PLAYER_Y_MAX: f64 = 200.0;
+
+/// Ship collision bounding box half-extents (matches SHIP_FRAME_WIDTH/HEIGHT = 40x33).
+pub const SHIP_HALF_W: f64 = 20.0;
+pub const SHIP_HALF_H: f64 = 16.5;
+
+/// Scale factor applied to power when computing initial missile velocity.
+pub const MISSILE_SPEED_SCALE: f64 = 0.1;
+
+/// Number of ticks after launch during which the shooter is immune to self-hit.
+pub const SELF_HIT_GRACE_TICKS: i32 = 5;
+
+/// Default maximum flight ticks before a missile times out.
+pub const MAX_FLIGHT: i32 = 750;
+
+pub const GRAVITY: f64 = 120.0;
+/// Physics tick rate used by both client (FixedUpdate) and server.
+pub const TICK_HZ: f64 = 30.0;
+
+// ── Scoring constants ───────────────────────────────────────────────────────
+
+pub const HIT_SCORE: i32 = 1500;
+pub const SELF_HIT: i32 = 2000;
+pub const QUICK_SCORE_1: i32 = 500;
+pub const QUICK_SCORE_2: i32 = 200;
+pub const QUICK_SCORE_3: i32 = 100;
+/// Power penalty multiplier: penalty = -(PENALTY_FACTOR * power) as i32.
+pub const PENALTY_FACTOR: f64 = 5.0;
+
+// ── Planet generation constants ─────────────────────────────────────────────
+
+/// Minimum clearance between a planet edge and the ship spawn columns.
+pub const PLANET_SHIP_DISTANCE: f64 = 75.0;
+/// Minimum clearance between a planet edge and the top/bottom screen edge.
+pub const PLANET_EDGE_DISTANCE: f64 = 50.0;
+
+pub const PLANET_MASS_MIN: f64 = 8.0;
+pub const PLANET_MASS_MAX: f64 = 512.0;
+/// radius = mass ^ PLANET_RADIUS_EXPONENT * PLANET_RADIUS_SCALE
+pub const PLANET_RADIUS_SCALE: f64 = 12.5;
+pub const PLANET_RADIUS_EXPONENT: f64 = 1.0 / 3.0;
+
+pub const BLACKHOLE_MASS_MIN: f64 = 600.0;
+pub const BLACKHOLE_MASS_MAX: f64 = 700.0;
+
+/// Overlap check: distance must be >= (r1+r2)*SCALE + MASS_K*(m1+m2).
+pub const PLANET_OVERLAP_SCALE: f64 = 1.5;
+pub const PLANET_OVERLAP_MASS_K: f64 = 0.1;
+
 // ── Shared data types (no Bevy dependency) ─────────────────────────────────
 
 /// Planet data as sent over the network and used in pure physics.
@@ -60,7 +125,7 @@ impl Default for GameSettingsData {
             fixed_power: false,
             particles_enabled: true,
             max_rounds: 0,
-            max_flight: 750,
+            max_flight: MAX_FLIGHT,
         }
     }
 }
@@ -131,11 +196,19 @@ pub enum ServerMsg {
     OpponentDisconnected,
 }
 
-// ── Pure physics functions (shared between server and client local-mode) ───
+// ── Pure physics / game-logic functions ────────────────────────────────────
 
-pub const GRAVITY: f64 = 120.0;
-/// Physics tick rate used by both client (FixedUpdate) and server.
-pub const TICK_HZ: f64 = 30.0;
+/// Check if a position is within the visible screen (Bevy coords, center origin, Y-up).
+pub fn is_on_screen(pos: (f64, f64)) -> bool {
+    pos.0 >= -WORLD_HALF_W && pos.0 <= WORLD_HALF_W
+        && pos.1 >= -WORLD_HALF_H && pos.1 <= WORLD_HALF_H
+}
+
+/// Check if a position is within the extended play area (3× screen, for cleanup).
+pub fn is_in_extended_range(pos: (f64, f64)) -> bool {
+    pos.0 >= -3.0 * WORLD_HALF_W && pos.0 <= 3.0 * WORLD_HALF_W
+        && pos.1 >= -3.0 * WORLD_HALF_H && pos.1 <= 3.0 * WORLD_HALF_H
+}
 
 /// Advance one physics tick: apply gravity from all planets, then move the body.
 /// Mutates `pos`, `vel`, `last_pos`, and `flight` in-place.
