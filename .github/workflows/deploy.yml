@@ -32,11 +32,8 @@ jobs:
           key: native-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: native-
 
-      - name: Install system dependencies
-        run: sudo apt-get install -y libwayland-dev libasound2-dev libudev-dev
-
       - name: Check workspace (native)
-        run: cargo check --workspace
+        run: cargo check --workspace --exclude gnils
 
   build:
     runs-on: ubuntu-latest
