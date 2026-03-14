@@ -4,7 +4,6 @@ use rand::Rng;
 use crate::components::Planet;
 use crate::constants::*;
 use crate::resources::*;
-use crate::systems::player::pygame_to_bevy;
 
 pub fn spawn_planets(
     mut commands: Commands,
@@ -37,12 +36,12 @@ pub fn spawn_planets(
 
                 // Blackholes use 3x distance from edges
                 let x = rng.gen_range(
-                    (3.0 * PLANET_SHIP_DISTANCE + radius)
-                        ..=(800.0 - 3.0 * PLANET_SHIP_DISTANCE - radius),
+                    (-400.0 + 3.0 * PLANET_SHIP_DISTANCE + radius)
+                        ..=(400.0 - 3.0 * PLANET_SHIP_DISTANCE - radius),
                 );
                 let y = rng.gen_range(
-                    (3.0 * PLANET_EDGE_DISTANCE + radius)
-                        ..=(600.0 - 3.0 * PLANET_EDGE_DISTANCE - radius),
+                    (-300.0 + 3.0 * PLANET_EDGE_DISTANCE + radius)
+                        ..=(300.0 - 3.0 * PLANET_EDGE_DISTANCE - radius),
                 );
 
                 let mut ok = true;
@@ -57,8 +56,6 @@ pub fn spawn_planets(
                 if ok {
                     placed_bodies.push((x, y, radius, mass));
 
-                    let bevy_pos = pygame_to_bevy(x, y);
-
                     // Blackholes are invisible (2x2 transparent sprite)
                     commands.spawn((
                         Sprite {
@@ -66,7 +63,7 @@ pub fn spawn_planets(
                             custom_size: Some(Vec2::new(2.0, 2.0)),
                             ..default()
                         },
-                        Transform::from_xyz(bevy_pos.x, bevy_pos.y, 2.0),
+                        Transform::from_xyz(x as f32, y as f32, 2.0),
                         Planet {
                             mass,
                             radius,
@@ -96,10 +93,10 @@ pub fn spawn_planets(
                 let radius = mass.powf(1.0 / 3.0) * 12.5;
 
                 let x = rng.gen_range(
-                    (PLANET_SHIP_DISTANCE + radius)..=(800.0 - PLANET_SHIP_DISTANCE - radius),
+                    (-400.0 + PLANET_SHIP_DISTANCE + radius)..=(400.0 - PLANET_SHIP_DISTANCE - radius),
                 );
                 let y = rng.gen_range(
-                    (PLANET_EDGE_DISTANCE + radius)..=(600.0 - PLANET_EDGE_DISTANCE - radius),
+                    (-300.0 + PLANET_EDGE_DISTANCE + radius)..=(300.0 - PLANET_EDGE_DISTANCE - radius),
                 );
 
                 let mut ok = true;
@@ -124,7 +121,6 @@ pub fn spawn_planets(
 
                     let texture_index = (n - 1) as usize;
                     let sprite_size = (2.0 * radius / 0.96) as f32;
-                    let bevy_pos = pygame_to_bevy(x, y);
 
                     commands.spawn((
                         Sprite {
@@ -132,7 +128,7 @@ pub fn spawn_planets(
                             custom_size: Some(Vec2::new(sprite_size, sprite_size)),
                             ..default()
                         },
-                        Transform::from_xyz(bevy_pos.x, bevy_pos.y, 2.0),
+                        Transform::from_xyz(x as f32, y as f32, 2.0),
                         Planet {
                             mass,
                             radius,

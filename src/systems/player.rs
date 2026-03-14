@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 
 use crate::components::*;
-use crate::constants::*;
 use crate::resources::*;
 
 /// Update player ship transforms based on position and rotation.
@@ -98,12 +97,13 @@ pub fn draw_aim_line(
 
         let (lx, ly) = get_launch_point_from_transform(player, transform);
         let end_x = lx + player.power * player.angle.to_radians().sin();
-        let end_y = ly - player.power * player.angle.to_radians().cos();
+        let end_y = ly + player.power * player.angle.to_radians().cos();
 
-        let start_bevy = pygame_to_bevy(lx, ly);
-        let end_bevy = pygame_to_bevy(end_x, end_y);
-
-        gizmos.line_2d(start_bevy, end_bevy, player.color());
+        gizmos.line_2d(
+            Vec2::new(lx as f32, ly as f32),
+            Vec2::new(end_x as f32, end_y as f32),
+            player.color(),
+        );
     }
 }
 
@@ -213,21 +213,13 @@ pub fn update_ui_text(
     }
 }
 
-/// Get launch point using player data and transform.
+/// Get launch point using player data and transform (Bevy coords, center origin, Y-up).
 pub fn get_launch_point_from_transform(player: &Player, transform: &Transform) -> (f64, f64) {
-    let cx = (transform.translation.x + WINDOW_WIDTH / 2.0) as f64;
-    let cy = (WINDOW_HEIGHT / 2.0 - transform.translation.y) as f64;
+    let cx = transform.translation.x as f64;
+    let cy = transform.translation.y as f64;
     let angle_rad = player.angle.to_radians();
     (
         cx + player.gun_offset * angle_rad.sin(),
-        cy - player.gun_offset * angle_rad.cos(),
-    )
-}
-
-/// Convert pygame coordinates (top-left origin, Y-down) to bevy coordinates (center origin, Y-up).
-pub fn pygame_to_bevy(x: f64, y: f64) -> Vec2 {
-    Vec2::new(
-        x as f32 - WINDOW_WIDTH / 2.0,
-        WINDOW_HEIGHT / 2.0 - y as f32,
+        cy + player.gun_offset * angle_rad.cos(),
     )
 }

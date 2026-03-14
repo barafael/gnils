@@ -28,18 +28,18 @@ pub const WINDOW_HEIGHT: f32 = 600.0;
 pub const PLAYER1_COLOR: (u8, u8, u8) = (209, 170, 133);
 pub const PLAYER2_COLOR: (u8, u8, u8) = (132, 152, 192);
 
-pub const PLAYER_Y_MIN: f64 = 100.0;
-pub const PLAYER_Y_MAX: f64 = 500.0;
+pub const PLAYER_Y_MIN: f64 = -200.0;
+pub const PLAYER_Y_MAX: f64 = 200.0;
 
 pub const SHIP_FRAME_WIDTH: u32 = 40;
 pub const SHIP_FRAME_HEIGHT: u32 = 33;
 
-/// Check if a position is within the visible screen (pygame coords).
+/// Check if a position is within the visible screen (Bevy coords, center origin Y-up).
 pub fn is_on_screen(pos: (f64, f64)) -> bool {
-    pos.0 >= 0.0 && pos.0 <= 800.0 && pos.1 >= 0.0 && pos.1 <= 600.0
+    pos.0 >= -400.0 && pos.0 <= 400.0 && pos.1 >= -300.0 && pos.1 <= 300.0
 }
 
 /// Check if a position is within extended range (for cleanup).
 pub fn is_in_extended_range(pos: (f64, f64)) -> bool {
-    pos.0 >= -800.0 && pos.0 <= 2400.0 && pos.1 >= -600.0 && pos.1 <= 1800.0
+    pos.0 >= -1200.0 && pos.0 <= 1200.0 && pos.1 >= -900.0 && pos.1 <= 900.0
 }

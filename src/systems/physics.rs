@@ -2,7 +2,6 @@ use bevy::prelude::*;
 
 use crate::components::*;
 use crate::resources::*;
-use crate::systems::player::pygame_to_bevy;
 
 // ── Gravity helpers ────────────────────────────────────────────────────────
 
@@ -71,14 +70,12 @@ pub fn sync_transforms(
         if !marker.active {
             continue;
         }
-        let bevy_pos = pygame_to_bevy(body.pos.0, body.pos.1);
-        transform.translation.x = bevy_pos.x;
-        transform.translation.y = bevy_pos.y;
+        transform.translation.x = body.pos.0 as f32;
+        transform.translation.y = body.pos.1 as f32;
     }
 
     for (body, mut transform) in particles.iter_mut() {
-        let bevy_pos = pygame_to_bevy(body.pos.0, body.pos.1);
-        transform.translation.x = bevy_pos.x;
-        transform.translation.y = bevy_pos.y;
+        transform.translation.x = body.pos.0 as f32;
+        transform.translation.y = body.pos.1 as f32;
     }
 }

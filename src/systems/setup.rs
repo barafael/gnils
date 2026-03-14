@@ -7,8 +7,6 @@ use gnils_protocol::{GUN_OFFSET_P1, GUN_OFFSET_P2};
 use crate::components::*;
 use crate::constants::*;
 use crate::resources::*;
-use crate::systems::player::pygame_to_bevy;
-
 pub fn setup_camera(mut commands: Commands) {
     commands.spawn(Camera2d);
 }
@@ -98,8 +96,6 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
     let y1 = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
     let y2 = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
 
-    let p1_bevy = pygame_to_bevy(40.0, y1);
-
     commands.spawn((
         Sprite::from_atlas_image(
             assets.red_ship.clone(),
@@ -108,7 +104,7 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
                 index: 0,
             },
         ),
-        Transform::from_xyz(p1_bevy.x, p1_bevy.y, 4.0),
+        Transform::from_xyz(-360.0, y1 as f32, 4.0),
         Player {
             id: 1,
             angle: 90.0,
@@ -132,11 +128,9 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
                 index: 0,
             },
         ),
-        Transform::from_xyz(p1_bevy.x, p1_bevy.y, 4.05),
+        Transform::from_xyz(-360.0, y1 as f32, 4.05),
         crate::components::ShipBlendSprite { player_id: 1 },
     ));
-
-    let p2_bevy = pygame_to_bevy(760.0, y2);
 
     commands.spawn((
         Sprite::from_atlas_image(
@@ -146,7 +140,7 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
                 index: 0,
             },
         ),
-        Transform::from_xyz(p2_bevy.x, p2_bevy.y, 4.0),
+        Transform::from_xyz(360.0, y2 as f32, 4.0),
         Player {
             id: 2,
             angle: 270.0,
@@ -170,7 +164,7 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
                 index: 0,
             },
         ),
-        Transform::from_xyz(p2_bevy.x, p2_bevy.y, 4.05),
+        Transform::from_xyz(360.0, y2 as f32, 4.05),
         crate::components::ShipBlendSprite { player_id: 2 },
     ));
 }

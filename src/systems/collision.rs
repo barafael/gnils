@@ -80,8 +80,8 @@ pub fn missile_collision(
                 continue;
             }
 
-            let cx = (transform.translation.x + WINDOW_WIDTH / 2.0) as f64;
-            let cy = (WINDOW_HEIGHT / 2.0 - transform.translation.y) as f64;
+            let cx = transform.translation.x as f64;
+            let cy = transform.translation.y as f64;
             let half_w = SHIP_FRAME_WIDTH as f64 / 2.0;
             let half_h = SHIP_FRAME_HEIGHT as f64 / 2.0;
 
@@ -106,40 +106,40 @@ pub fn missile_collision(
 
         // Bounce mode
         if settings.bounce {
-            if body.pos.0 > 799.0 {
+            if body.pos.0 > 400.0 {
                 let d = body.pos.0 - body.last_pos.0;
                 if d.abs() > 1e-10 {
                     body.pos.1 = body.last_pos.1
-                        + (body.pos.1 - body.last_pos.1) * (799.0 - body.last_pos.0) / d;
+                        + (body.pos.1 - body.last_pos.1) * (400.0 - body.last_pos.0) / d;
                 }
-                body.pos.0 = 799.0;
+                body.pos.0 = 400.0;
                 body.velocity.0 = -body.velocity.0;
             }
-            if body.pos.0 < 0.0 {
+            if body.pos.0 < -400.0 {
                 let d = body.last_pos.0 - body.pos.0;
                 if d.abs() > 1e-10 {
-                    body.pos.1 =
-                        body.last_pos.1 + (body.pos.1 - body.last_pos.1) * body.last_pos.0 / d;
+                    body.pos.1 = body.last_pos.1
+                        + (body.pos.1 - body.last_pos.1) * (body.last_pos.0 + 400.0) / d;
                 }
-                body.pos.0 = 0.0;
+                body.pos.0 = -400.0;
                 body.velocity.0 = -body.velocity.0;
             }
-            if body.pos.1 > 599.0 {
+            if body.pos.1 > 300.0 {
                 let d = body.pos.1 - body.last_pos.1;
                 if d.abs() > 1e-10 {
                     body.pos.0 = body.last_pos.0
-                        + (body.pos.0 - body.last_pos.0) * (599.0 - body.last_pos.1) / d;
+                        + (body.pos.0 - body.last_pos.0) * (300.0 - body.last_pos.1) / d;
                 }
-                body.pos.1 = 599.0;
+                body.pos.1 = 300.0;
                 body.velocity.1 = -body.velocity.1;
             }
-            if body.pos.1 < 0.0 {
+            if body.pos.1 < -300.0 {
                 let d = body.last_pos.1 - body.pos.1;
                 if d.abs() > 1e-10 {
-                    body.pos.0 =
-                        body.last_pos.0 + (body.pos.0 - body.last_pos.0) * body.last_pos.1 / d;
+                    body.pos.0 = body.last_pos.0
+                        + (body.pos.0 - body.last_pos.0) * (body.last_pos.1 + 300.0) / d;
                 }
-                body.pos.1 = 0.0;
+                body.pos.1 = -300.0;
                 body.velocity.1 = -body.velocity.1;
             }
         }

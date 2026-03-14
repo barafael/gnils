@@ -53,7 +53,7 @@ pub fn fire_missile(
         body.last_pos = launch_pos;
         body.velocity = (
             0.1 * speed * angle_rad.sin(),
-            -0.1 * speed * angle_rad.cos(),
+            0.1 * speed * angle_rad.cos(),
         );
         body.flight = settings.max_flight;
 
@@ -70,7 +70,7 @@ pub fn fire_missile(
         launch_pos.0,
         launch_pos.1,
         0.1 * speed * angle_rad.sin(),
-        -0.1 * speed * angle_rad.cos(),
+        0.1 * speed * angle_rad.cos(),
         speed
     );
     turn.last_player = current;
@@ -94,12 +94,14 @@ pub fn draw_missile_trail(
         }
 
         if let Some(image) = images.get_mut(&trail_canvas.image_handle) {
+            // Trail canvas is a pixel buffer (0..800, 0..600, Y-down).
+            // Convert from Bevy coords (center origin, Y-up) to pixel coords.
             trail::draw_aa_line(
                 image,
-                body.last_pos.0,
-                body.last_pos.1,
-                body.pos.0,
-                body.pos.1,
+                body.last_pos.0 + 400.0,
+                300.0 - body.last_pos.1,
+                body.pos.0 + 400.0,
+                300.0 - body.pos.1,
                 marker.trail_color,
             );
         }

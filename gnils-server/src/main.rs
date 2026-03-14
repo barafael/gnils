@@ -239,7 +239,7 @@ fn tick_round_setup(
 ) {
     state.round += 1;
     let mut rng = rand::thread_rng();
-    state.player_y = [rng.gen_range(100.0..=500.0), rng.gen_range(100.0..=500.0)];
+    state.player_y = [rng.gen_range(-200.0..=200.0), rng.gen_range(-200.0..=200.0)];
     state.active_player = if state.round == 1 { 1 }
         else if state.scores[0] < state.scores[1] { 1 }
         else if state.scores[1] < state.scores[0] { 2 }
@@ -261,13 +261,13 @@ fn tick_round_setup(
 
 fn launch_missile(state: &mut RoundState, angle: f64, power: f64, settings: &GameSettingsData) {
     let idx = (state.active_player - 1) as usize;
-    let x = if state.active_player == 1 { 40.0 } else { 760.0 };
+    let x = if state.active_player == 1 { -360.0 } else { 360.0 };
     let gun = if state.active_player == 1 { GUN_OFFSET_P1 } else { GUN_OFFSET_P2 };
     let rad = angle.to_radians();
     state.missile = BodySnapshot {
-        pos: (x + gun * rad.sin(), state.player_y[idx] - gun * rad.cos()),
-        vel: (0.1 * power * rad.sin(), -0.1 * power * rad.cos()),
-        last_pos: (x + gun * rad.sin(), state.player_y[idx] - gun * rad.cos()),
+        pos: (x + gun * rad.sin(), state.player_y[idx] + gun * rad.cos()),
+        vel: (0.1 * power * rad.sin(), 0.1 * power * rad.cos()),
+        last_pos: (x + gun * rad.sin(), state.player_y[idx] + gun * rad.cos()),
         flight: settings.max_flight,
         active: true,
     };
@@ -357,7 +357,7 @@ fn check_collisions(m: &BodySnapshot, planets: &[PlanetData], py: &[f64; 2], _s:
         }
     }
     for (i, &y) in py.iter().enumerate() {
-        let x = if i==0 { 40.0 } else { 760.0 };
+        let x = if i==0 { -360.0 } else { 360.0 };
         for step in 0..10 {
             let tx = m.last_pos.0 + step as f64*0.1*m.vel.0;
             let ty = m.last_pos.1 + step as f64*0.1*m.vel.1;
@@ -369,8 +369,8 @@ fn check_collisions(m: &BodySnapshot, planets: &[PlanetData], py: &[f64; 2], _s:
     None
 }
 
-fn on_screen(p: (f64,f64))->bool{p.0>=0.0&&p.0<=800.0&&p.1>=0.0&&p.1<=600.0}
-fn in_range(p: (f64,f64))->bool{p.0>=-800.0&&p.0<=2400.0&&p.1>=-600.0&&p.1<=1800.0}
+fn on_screen(p: (f64,f64))->bool{p.0>=-400.0&&p.0<=400.0&&p.1>=-300.0&&p.1<=300.0}
+fn in_range(p: (f64,f64))->bool{p.0>=-1200.0&&p.0<=1200.0&&p.1>=-900.0&&p.1<=900.0}
 
 fn apply_bounce(m: &mut BodySnapshot) {
     macro_rules! bounce_axis {
@@ -382,10 +382,10 @@ fn apply_bounce(m: &mut BodySnapshot) {
             }
         }
     }
-    bounce_axis!(m.pos.0, m.pos.1, m.last_pos.0, m.last_pos.1, m.vel.0, 799.0,  1.0);
-    bounce_axis!(m.pos.0, m.pos.1, m.last_pos.0, m.last_pos.1, m.vel.0, 0.0,   -1.0);
-    bounce_axis!(m.pos.1, m.pos.0, m.last_pos.1, m.last_pos.0, m.vel.1, 599.0,  1.0);
-    bounce_axis!(m.pos.1, m.pos.0, m.last_pos.1, m.last_pos.0, m.vel.1, 0.0,   -1.0);
+    bounce_axis!(m.pos.0, m.pos.1, m.last_pos.0, m.last_pos.1, m.vel.0,  400.0,  1.0);
+    bounce_axis!(m.pos.0, m.pos.1, m.last_pos.0, m.last_pos.1, m.vel.0, -400.0, -1.0);
+    bounce_axis!(m.pos.1, m.pos.0, m.last_pos.1, m.last_pos.0, m.vel.1,  300.0,  1.0);
+    bounce_axis!(m.pos.1, m.pos.0, m.last_pos.1, m.last_pos.0, m.vel.1, -300.0, -1.0);
 }
 
 fn resolve_hit(col: &ColInfo, active: u8, s: &GameSettingsData, flight: i32) -> (HitResult, i32) {
@@ -416,7 +416,7 @@ fn generate_planets(settings: &GameSettingsData, rng: &mut impl Rng) -> Vec<Plan
         for _ in 0..rng.gen_range(1..=settings.max_blackholes) {
             for _ in 0..1000 {
                 let mass=rng.gen_range(600.0..=700.0f64); let radius=1.0;
-                let x=rng.gen_range(225.0..=575.0f64); let y=rng.gen_range(150.0..=450.0f64);
+                let x=rng.gen_range(-175.0..=175.0f64); let y=rng.gen_range(-150.0..=150.0f64);
                 if no_overlap(x,y,radius,mass,&placed) {
                     placed.push((x,y,radius,mass));
                     out.push(PlanetData{mass,radius,pos:(x,y),is_blackhole:true,texture_index:0});
@@ -430,8 +430,8 @@ fn generate_planets(settings: &GameSettingsData, rng: &mut impl Rng) -> Vec<Plan
         for _ in 0..n {
             for _ in 0..1000 {
                 let mass=rng.gen_range(8.0..=512.0f64); let radius=mass.powf(1.0/3.0)*12.5;
-                let x=rng.gen_range((75.0+radius)..=(725.0-radius));
-                let y=rng.gen_range((50.0+radius)..=(550.0-radius));
+                let x=rng.gen_range((-325.0+radius)..=(325.0-radius));
+                let y=rng.gen_range((-250.0+radius)..=(250.0-radius));
                 if no_overlap(x,y,radius,mass,&placed) {
                     let mut ti=rng.gen_range(0..8u8);
                     for _ in 0..20 { if !used.contains(&ti){break;} ti=rng.gen_range(0..8u8); }

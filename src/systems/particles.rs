@@ -4,7 +4,6 @@ use rand::Rng;
 use crate::components::*;
 use crate::constants::*;
 use crate::resources::*;
-use crate::systems::player::pygame_to_bevy;
 
 /// Process queued particle spawn requests.
 pub fn spawn_particles(
@@ -40,7 +39,7 @@ pub fn spawn_particles(
             };
 
             let vx = 0.1 * speed * (angle.to_radians()).sin();
-            let vy = -0.1 * speed * (angle.to_radians()).cos();
+            let vy = 0.1 * speed * (angle.to_radians()).cos();
 
             let pos = (request.pos.x as f64, request.pos.y as f64);
 
@@ -50,11 +49,9 @@ pub fn spawn_particles(
                 assets.explosion_10.clone()
             };
 
-            let bevy_pos = pygame_to_bevy(pos.0, pos.1);
-
             commands.spawn((
                 Sprite::from_image(texture),
-                Transform::from_xyz(bevy_pos.x, bevy_pos.y, 5.0),
+                Transform::from_xyz(pos.0 as f32, pos.1 as f32, 5.0),
                 GravityBody {
                     pos,
                     velocity: (vx, vy),
