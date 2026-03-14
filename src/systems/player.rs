@@ -9,7 +9,7 @@ use crate::resources::*;
 /// Original Python: selects frame from rel_rot, then does rotozoom(-rel_rot, 1.0).
 pub fn update_player_sprites(
     mut players: Query<(&Player, &mut Transform, &mut Sprite)>,
-    assets: Res<crate::resources::GameAssets>,
+    assets: Res<GameAssets>,
 ) {
     for (player, mut transform, mut sprite) in players.iter_mut() {
         // Skip players in explosion animation
@@ -75,7 +75,7 @@ pub fn draw_aim_line(mut gizmos: Gizmos, players: Query<(&Player, &Transform)>, 
 /// Uses half-frame increments since this runs at ~60fps but Python runs at 30fps.
 pub fn update_ship_explosion(
     mut players: Query<(&mut Player, &mut Sprite, &mut Transform)>,
-    assets: Res<crate::resources::GameAssets>,
+    assets: Res<GameAssets>,
 ) {
     for (mut player, mut sprite, mut transform) in players.iter_mut() {
         if !player.shot {
@@ -89,11 +89,13 @@ pub fn update_ship_explosion(
         let s = e * (6.0 - e) * 100.0 / 9.0;
 
         if s > 0.0 {
-            // Replace ship sprite with explosion image
-            sprite.image = assets.explosion.clone();
-            sprite.texture_atlas = None;
+            // Transition to explosion sprite only on the first frame (atlas present → no atlas)
+            if sprite.texture_atlas.is_some() {
+                sprite.image = assets.explosion.clone();
+                sprite.texture_atlas = None;
+                transform.rotation = Quat::IDENTITY;
+            }
             sprite.custom_size = Some(Vec2::new(s as f32, s as f32));
-            transform.rotation = Quat::IDENTITY;
         } else {
             // Explosion finished — hide the ship
             sprite.custom_size = Some(Vec2::ZERO);

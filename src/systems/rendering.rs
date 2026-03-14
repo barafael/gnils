@@ -92,9 +92,11 @@ pub fn update_planet_visibility(
     mut planets: Query<(&mut Sprite, &Planet)>,
 ) {
     if !settings.invisible {
-        // Normal mode: planets always fully visible
-        for (mut sprite, _) in planets.iter_mut() {
-            sprite.color = Color::WHITE;
+        // Normal mode: only reset colors when settings change (avoids change-detection churn)
+        if settings.is_changed() {
+            for (mut sprite, _) in planets.iter_mut() {
+                sprite.color = Color::WHITE;
+            }
         }
         return;
     }
@@ -131,7 +133,6 @@ pub fn draw_zoom_view(
     turn: Res<TurnState>,
     missile_q: Query<(&GravityBody, &MissileMarker)>,
     players: Query<(&Player, &Transform)>,
-    settings: Res<GameSettings>,
 ) {
     if !turn.firing {
         return;
@@ -153,13 +154,9 @@ pub fn draw_zoom_view(
     }
     let mpos = missile_pos.unwrap();
 
-    // Zoom view: 600x450 at screen position (100, 75) in pygame coords
-    // In bevy coords: center of zoom = pygame (400, 300) → bevy (0, 0)
-    // Zoom dimensions: 600x450 in bevy coords, centered
+    // Zoom view: 600x450 centered at bevy (0,0), matching pygame (400,300) center
     let zoom_w = 600.0_f32;
     let zoom_h = 450.0_f32;
-    let zoom_cx = 0.0_f32;
-    let zoom_cy = 0.0_f32;
 
     // Draw dim background (full screen darkening via large rect)
     // We can't easily do a filled rect with gizmos, so skip the dim for now
@@ -167,15 +164,11 @@ pub fn draw_zoom_view(
     // White border around zoom area
     let half_w = zoom_w / 2.0;
     let half_h = zoom_h / 2.0;
-    let tl = Vec2::new(zoom_cx - half_w, zoom_cy + half_h);
-    let tr = Vec2::new(zoom_cx + half_w, zoom_cy + half_h);
-    let bl = Vec2::new(zoom_cx - half_w, zoom_cy - half_h);
-    let br = Vec2::new(zoom_cx + half_w, zoom_cy - half_h);
     let white = Color::WHITE;
-    gizmos.line_2d(tl, tr, white);
-    gizmos.line_2d(tr, br, white);
-    gizmos.line_2d(br, bl, white);
-    gizmos.line_2d(bl, tl, white);
+    gizmos.line_2d(Vec2::new(-half_w, half_h),  Vec2::new(half_w, half_h),  white);
+    gizmos.line_2d(Vec2::new(half_w,  half_h),  Vec2::new(half_w, -half_h), white);
+    gizmos.line_2d(Vec2::new(half_w,  -half_h), Vec2::new(-half_w, -half_h), white);
+    gizmos.line_2d(Vec2::new(-half_w, -half_h), Vec2::new(-half_w, half_h), white);
 
     // Grey border around the 1/4 scale game area (200x150 centered in zoom)
     let game_w = 200.0_f32;
@@ -183,26 +176,22 @@ pub fn draw_zoom_view(
     let g_half_w = game_w / 2.0;
     let g_half_h = game_h / 2.0;
     let grey = Color::srgb(150.0 / 255.0, 150.0 / 255.0, 150.0 / 255.0);
-    let gtl = Vec2::new(zoom_cx - g_half_w, zoom_cy + g_half_h);
-    let gtr = Vec2::new(zoom_cx + g_half_w, zoom_cy + g_half_h);
-    let gbl = Vec2::new(zoom_cx - g_half_w, zoom_cy - g_half_h);
-    let gbr = Vec2::new(zoom_cx + g_half_w, zoom_cy - g_half_h);
-    gizmos.line_2d(gtl, gtr, grey);
-    gizmos.line_2d(gtr, gbr, grey);
-    gizmos.line_2d(gbr, gbl, grey);
-    gizmos.line_2d(gbl, gtl, grey);
+    gizmos.line_2d(Vec2::new(-g_half_w, g_half_h),  Vec2::new(g_half_w, g_half_h),  grey);
+    gizmos.line_2d(Vec2::new(g_half_w,  g_half_h),  Vec2::new(g_half_w, -g_half_h), grey);
+    gizmos.line_2d(Vec2::new(g_half_w,  -g_half_h), Vec2::new(-g_half_w, -g_half_h), grey);
+    gizmos.line_2d(Vec2::new(-g_half_w, -g_half_h), Vec2::new(-g_half_w, g_half_h), grey);
 
     // Draw missile position as a dot at 1/4 scale
     // Pygame pos (0-800, 0-600) → scaled to (-100..100, -75..75) in the game area box
-    let mx = (mpos.0 as f32 / 800.0 - 0.5) * game_w + zoom_cx;
-    let my = (0.5 - mpos.1 as f32 / 600.0) * game_h + zoom_cy;
+    let mx = (mpos.0 as f32 / 800.0 - 0.5) * game_w;
+    let my = (0.5 - mpos.1 as f32 / 600.0) * game_h;
     gizmos.circle_2d(Vec2::new(mx, my), 3.0, Color::srgb(1.0, 0.3, 0.3));
 
     // Draw player positions as small dots
     for (player, transform) in players.iter() {
         // Convert bevy transform back to scaled minimap coords
-        let px = (transform.translation.x / 800.0) * game_w + zoom_cx;
-        let py = (transform.translation.y / 600.0) * game_h + zoom_cy;
+        let px = (transform.translation.x / 800.0) * game_w;
+        let py = (transform.translation.y / 600.0) * game_h;
         gizmos.circle_2d(Vec2::new(px, py), 2.0, player.color());
     }
 }
@@ -220,8 +209,10 @@ pub fn update_round_overlay(
     >,
     mut text_q: Query<(&mut Text, &mut TextFont, &mut TextColor), Without<UiRoundOverlay>>,
 ) {
+    let show = turn.show_round > 30.0;
+
     for (mut vis, children) in container_q.iter_mut() {
-        if turn.show_round > 30.0 {
+        if show {
             *vis = Visibility::Visible;
 
             for &child in children {
@@ -244,12 +235,15 @@ pub fn update_round_overlay(
                     font.font_size = size as f32;
                 }
             }
-
-            // Decay — Python runs at 30fps, Bevy Update at ~60fps, so use sqrt(1.04) ≈ 1.02
-            turn.show_round /= 1.02;
         } else {
             *vis = Visibility::Hidden;
         }
+    }
+
+    // Decay once per frame, outside the container loop
+    if show {
+        // Python runs at 30fps, Bevy Update at ~60fps, so use sqrt(1.04) ≈ 1.02
+        turn.show_round /= 1.02;
     }
 }
 
@@ -289,14 +283,14 @@ pub fn update_round_over_display(
         };
     }
 
-    if show_msg && round_result.hit_player > 0 {
+    if show_msg && round_result.hit_player > 0 && (round_result.is_changed() || turn.is_changed()) {
         for mut text in text_q.iter_mut() {
             let mut lines = Vec::new();
             lines.push(round_result.message.clone());
             lines.push(String::new());
 
             if round_result.self_hit {
-                lines.push(format!("Hit self:              {}", -SELF_HIT));
+                lines.push(format!("Hit self:              {}", round_result.hit_score));
             } else {
                 lines.push(format!("Hit opponent:        {}", round_result.hit_score));
                 if round_result.quick_bonus > 0 {

@@ -4,6 +4,7 @@ use crate::components::*;
 use crate::constants::*;
 use crate::events::HitType;
 use crate::resources::*;
+use crate::systems::player::pygame_to_bevy;
 
 /// Handle queued missile impacts: scoring, marking players as shot, etc.
 pub fn handle_missile_impact(
@@ -140,7 +141,7 @@ pub fn round_setup(
     for (player, mut transform) in players.iter_mut() {
         let y_pygame = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
         let x_pygame = if player.id == 1 { 40.0 } else { 760.0 };
-        let bevy_pos = crate::systems::player::pygame_to_bevy(x_pygame, y_pygame);
+        let bevy_pos = pygame_to_bevy(x_pygame, y_pygame);
         transform.translation.x = bevy_pos.x;
         transform.translation.y = bevy_pos.y;
     }
