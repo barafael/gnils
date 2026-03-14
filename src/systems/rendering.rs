@@ -179,9 +179,9 @@ pub fn draw_zoom_view(
     gizmos.line_2d(Vec2::new(ghw, -ghh), Vec2::new(-ghw, -ghh), grey);
     gizmos.line_2d(Vec2::new(-ghw, -ghh), Vec2::new(-ghw, ghh), grey);
 
-    // Missile dot
-    let mx = (mpos.0 as f32 / 800.0 - 0.5) * game_w;
-    let my = (0.5 - mpos.1 as f32 / 600.0) * game_h;
+    // Missile dot (Bevy coords: x ∈ -400..400, y ∈ -300..300, Y-up)
+    let mx = mpos.0 as f32 * game_w / 800.0;
+    let my = mpos.1 as f32 * game_h / 600.0;
     gizmos.circle_2d(Vec2::new(mx, my), 3.0, Color::srgb(1.0, 0.3, 0.3));
 
     // Player dots

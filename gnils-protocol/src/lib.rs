@@ -7,7 +7,7 @@ pub const SERVER_PORT: u16 = 5888;
 pub const PROTOCOL_ID: u64 = 0x0000_676E_696C_73;
 pub const PRIVATE_KEY: [u8; 32] = [0u8; 32];
 
-/// Distance from ship center to gun barrel tip (pygame-space pixels).
+/// Distance from ship center to gun barrel tip (world units / pixels).
 /// Derived from the original: rect.right - rect.centerx + 2/3 for a 40px-wide sprite.
 pub const GUN_OFFSET_P1: f64 = 22.0; // rect.right  - rect.centerx + 2 = 20 + 2
 pub const GUN_OFFSET_P2: f64 = 23.0; // rect.centerx - rect.left   + 3 = 20 + 3
@@ -19,7 +19,7 @@ pub const GUN_OFFSET_P2: f64 = 23.0; // rect.centerx - rect.left   + 3 = 20 + 3
 pub struct PlanetData {
     pub mass: f64,
     pub radius: f64,
-    /// Position in pygame-space (top-left origin, Y-down), 0..800 / 0..600
+    /// Position in Bevy-space (center origin, Y-up), -400..400 / -300..300
     pub pos: (f64, f64),
     pub is_blackhole: bool,
     /// Texture index 0..7 (ignored for blackholes)
@@ -104,7 +104,7 @@ pub enum ServerMsg {
         round: u32,
         active_player: u8,
         planets: Vec<PlanetData>,
-        /// Y position in pygame-space for player 1 and player 2.
+        /// Y position in Bevy-space for player 1 and player 2.
         player_y: [f64; 2],
     },
     /// Relay of the active player's aim to the waiting client (unreliable OK).

@@ -64,6 +64,10 @@ struct RoundState {
     trail_color: (u8, u8, u8),
     active_peer: Option<PeerId>,
     round_over_timer: f32,
+    /// Number of shots fired by each player this round (index 0 = player 1).
+    /// Used to compute the quick-hit bonus: hitting the opponent on their 1st/2nd/3rd
+    /// attempt awards 500/200/100 bonus points (matching the client).
+    player_attempts: [u32; 2],
 }
 
 // ── Plugin ────────────────────────────────────────────────────────────────────
@@ -238,6 +242,7 @@ fn tick_round_setup(
     mut next: ResMut<NextState<ServerPhase>>,
 ) {
     state.round += 1;
+    state.player_attempts = [0, 0];
     let mut rng = rand::thread_rng();
     state.player_y = [rng.gen_range(-200.0..=200.0), rng.gen_range(-200.0..=200.0)];
     state.active_player = if state.round == 1 { 1 }
@@ -261,6 +266,7 @@ fn tick_round_setup(
 
 fn launch_missile(state: &mut RoundState, angle: f64, power: f64, settings: &GameSettingsData) {
     let idx = (state.active_player - 1) as usize;
+    state.player_attempts[idx] += 1;
     let x = if state.active_player == 1 { -360.0 } else { 360.0 };
     let gun = if state.active_player == 1 { GUN_OFFSET_P1 } else { GUN_OFFSET_P2 };
     // angle is radians CCW from east (Bevy-native convention)
@@ -301,10 +307,11 @@ fn tick_simulation(
         s.send::<Unreliable>(ServerMsg::MissileUpdate { snapshot: snap.clone(), trail_color: trail });
     }
 
-    if let Some(col) = check_collisions(&state.missile, &planets, &player_y, &settings.0) {
+    if let Some(col) = check_collisions(&state.missile, &planets, &player_y, active_player, &settings.0) {
         state.missile.active = false;
         let flight = state.missile.flight;
-        let (hit, delta) = resolve_hit(&col, active_player, &settings.0, flight);
+        let player_attempts = state.player_attempts;
+        let (hit, delta) = resolve_hit(&col, active_player, &settings.0, flight, &player_attempts);
         apply_scores(&mut state.scores, active_player, &hit, delta);
         let scores = state.scores;
         let round = state.round;
@@ -347,7 +354,7 @@ struct ColInfo { pos: (f64, f64), kind: ColKind }
 #[derive(Clone)]
 enum ColKind { Planet, Blackhole, Ship(u8), Miss }
 
-fn check_collisions(m: &BodySnapshot, planets: &[PlanetData], py: &[f64; 2], _s: &GameSettingsData) -> Option<ColInfo> {
+fn check_collisions(m: &BodySnapshot, planets: &[PlanetData], py: &[f64; 2], active_player: u8, s: &GameSettingsData) -> Option<ColInfo> {
     if m.flight < 0 && !on_screen(m.pos) { return Some(ColInfo { pos: m.pos, kind: ColKind::Miss }); }
     if !in_range(m.pos)                  { return Some(ColInfo { pos: m.pos, kind: ColKind::Miss }); }
     for p in planets {
@@ -359,12 +366,16 @@ fn check_collisions(m: &BodySnapshot, planets: &[PlanetData], py: &[f64; 2], _s:
         }
     }
     for (i, &y) in py.iter().enumerate() {
+        let ship_id = (i + 1) as u8;
+        // Grace period: skip the launching player for the first few ticks to avoid
+        // self-hit on launch (gun tip is inside the bounding box at t=0).
+        if ship_id == active_player && m.flight > s.max_flight - 5 { continue; }
         let x = if i==0 { -360.0 } else { 360.0 };
         for step in 0..10 {
             let tx = m.last_pos.0 + step as f64*0.1*m.vel.0;
             let ty = m.last_pos.1 + step as f64*0.1*m.vel.1;
             if tx>=x-20.0&&tx<=x+20.0&&ty>=y-16.5&&ty<=y+16.5 {
-                return Some(ColInfo { pos: (tx,ty), kind: ColKind::Ship((i+1) as u8) });
+                return Some(ColInfo { pos: (tx,ty), kind: ColKind::Ship(ship_id) });
             }
         }
     }
@@ -390,15 +401,25 @@ fn apply_bounce(m: &mut BodySnapshot) {
     bounce_axis!(m.pos.1, m.pos.0, m.last_pos.1, m.last_pos.0, m.vel.1, -300.0, -1.0);
 }
 
-fn resolve_hit(col: &ColInfo, active: u8, s: &GameSettingsData, flight: i32) -> (HitResult, i32) {
+fn resolve_hit(col: &ColInfo, active: u8, s: &GameSettingsData, flight: i32, player_attempts: &[u32; 2]) -> (HitResult, i32) {
     match &col.kind {
         ColKind::Planet | ColKind::Miss => (HitResult::Planet, 0),
         ColKind::Blackhole              => (HitResult::Blackhole, 0),
         ColKind::Ship(hit) => {
             let self_hit = *hit == active;
             let penalty = -(s.max_flight - flight.max(0));
-            if self_hit { (HitResult::Ship { hit_player: *hit, shooter: active, self_hit: true  }, -2000) }
-            else        { (HitResult::Ship { hit_player: *hit, shooter: active, self_hit: false }, 1500 + penalty) }
+            if self_hit {
+                (HitResult::Ship { hit_player: *hit, shooter: active, self_hit: true }, -2000)
+            } else {
+                let victim_attempts = player_attempts[(*hit - 1) as usize];
+                let quick_bonus = match victim_attempts {
+                    1 => 500,
+                    2 => 200,
+                    3 => 100,
+                    _ => 0,
+                };
+                (HitResult::Ship { hit_player: *hit, shooter: active, self_hit: false }, 1500 + penalty + quick_bonus)
+            }
         }
     }
 }
