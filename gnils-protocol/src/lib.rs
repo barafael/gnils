@@ -134,6 +134,8 @@ pub enum ServerMsg {
 // ── Pure physics functions (shared between server and client local-mode) ───
 
 pub const GRAVITY: f64 = 120.0;
+/// Physics tick rate used by both client (FixedUpdate) and server.
+pub const TICK_HZ: f64 = 30.0;
 
 /// Advance one physics tick: apply gravity from all planets, then move the body.
 /// Mutates `pos`, `vel`, `last_pos`, and `flight` in-place.
@@ -186,7 +188,8 @@ pub fn circle_line_intersect(
     let disc = b * b - 4.0 * a * c;
 
     if disc < 0.0 {
-        return (4000.0, 3000.0);
+        // Fallback: return a point well outside the extended play area (±1200/±900).
+        return (2000.0, 1500.0);
     }
 
     let mut alpha = (-b + disc.sqrt()) / (2.0 * a);

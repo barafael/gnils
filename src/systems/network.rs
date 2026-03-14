@@ -37,7 +37,7 @@ pub struct GnilsClientNetPlugin;
 impl Plugin for GnilsClientNetPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ClientPlugins {
-            tick_duration: Duration::from_secs_f64(1.0 / 30.0),
+            tick_duration: Duration::from_secs_f64(1.0 / gnils_protocol::TICK_HZ),
         });
 
         app.add_channel::<Reliable>(ChannelSettings {

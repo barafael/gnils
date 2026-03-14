@@ -73,7 +73,7 @@ pub struct GnilsServerPlugin;
 impl Plugin for GnilsServerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(ServerPlugins {
-            tick_duration: Duration::from_secs_f64(1.0 / 30.0),
+            tick_duration: Duration::from_secs_f64(1.0 / TICK_HZ),
         });
 
         app.add_channel::<Reliable>(ChannelSettings {
@@ -263,11 +263,13 @@ fn launch_missile(state: &mut RoundState, angle: f64, power: f64, settings: &Gam
     let idx = (state.active_player - 1) as usize;
     let x = if state.active_player == 1 { -360.0 } else { 360.0 };
     let gun = if state.active_player == 1 { GUN_OFFSET_P1 } else { GUN_OFFSET_P2 };
-    let rad = angle.to_radians();
+    // angle is radians CCW from east (Bevy-native convention)
+    let launch_x = x + gun * angle.cos();
+    let launch_y = state.player_y[idx] + gun * angle.sin();
     state.missile = BodySnapshot {
-        pos: (x + gun * rad.sin(), state.player_y[idx] + gun * rad.cos()),
-        vel: (0.1 * power * rad.sin(), 0.1 * power * rad.cos()),
-        last_pos: (x + gun * rad.sin(), state.player_y[idx] + gun * rad.cos()),
+        pos: (launch_x, launch_y),
+        vel: (0.1 * power * angle.cos(), 0.1 * power * angle.sin()),
+        last_pos: (launch_x, launch_y),
         flight: settings.max_flight,
         active: true,
     };

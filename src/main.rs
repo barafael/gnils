@@ -30,8 +30,7 @@ fn main() {
         .add_plugins(GnilsClientNetPlugin)
         // Lobby / main menu plugin
         .add_plugins(LobbyPlugin)
-        // Fixed timestep at 30 Hz to match original physics
-        .insert_resource(Time::<Fixed>::from_hz(FPS))
+        .insert_resource(Time::<Fixed>::from_hz(gnils_protocol::TICK_HZ))
         // Game state
         .init_state::<GamePhase>()
         // Resources

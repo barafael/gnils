@@ -38,15 +38,16 @@ pub fn update_player_sprites(
         }
 
         // Compute blend frames: img1 = primary frame, img2 = secondary, f = blend factor
-        let (img1, img2, blend_f) = crate::ship_blend::compute_blend_frames(player.rel_rot);
+        // rel_rot is in radians; compute_blend_frames expects degrees.
+        let (img1, img2, blend_f) = crate::ship_blend::compute_blend_frames(player.rel_rot.to_degrees());
 
         if let Some(ref mut atlas) = sprite.texture_atlas {
             atlas.index = img1;
         }
         sprite.color = Color::WHITE;
 
-        // Full rotation matching Python's rotozoom(-rel_rot, 1.0)
-        transform.rotation = Quat::from_rotation_z(-(player.rel_rot as f32).to_radians());
+        // rel_rot is radians CCW from the ship's natural facing direction.
+        transform.rotation = Quat::from_rotation_z(player.rel_rot as f32);
 
         // Update blend sprite: mirror position/rotation, different frame, partial alpha
         for (blend, mut b_transform, mut b_sprite) in blend_sprites.iter_mut() {
@@ -96,8 +97,8 @@ pub fn draw_aim_line(
         }
 
         let (lx, ly) = get_launch_point_from_transform(player, transform);
-        let end_x = lx + player.power * player.angle.to_radians().sin();
-        let end_y = ly + player.power * player.angle.to_radians().cos();
+        let end_x = lx + player.power * player.angle.cos();
+        let end_y = ly + player.power * player.angle.sin();
 
         gizmos.line_2d(
             Vec2::new(lx as f32, ly as f32),
@@ -199,7 +200,7 @@ pub fn update_ui_text(
 
         if player.id == turn.current_player && !turn.firing && !turn.round_over {
             if let Ok(mut text) = angle_power.single_mut() {
-                **text = format!("Angle: {:.2}  Power: {:.1}", player.angle, player.power);
+                **text = format!("Angle: {:.2}  Power: {:.1}", player.angle.to_degrees(), player.power);
             }
         }
     }
@@ -214,12 +215,12 @@ pub fn update_ui_text(
 }
 
 /// Get launch point using player data and transform (Bevy coords, center origin, Y-up).
+/// `player.angle` is radians CCW from east.
 pub fn get_launch_point_from_transform(player: &Player, transform: &Transform) -> (f64, f64) {
     let cx = transform.translation.x as f64;
     let cy = transform.translation.y as f64;
-    let angle_rad = player.angle.to_radians();
     (
-        cx + player.gun_offset * angle_rad.sin(),
-        cy + player.gun_offset * angle_rad.cos(),
+        cx + player.gun_offset * player.angle.cos(),
+        cy + player.gun_offset * player.angle.sin(),
     )
 }

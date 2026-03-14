@@ -20,8 +20,6 @@ pub const QUICK_SCORE_2: i32 = 200;
 pub const QUICK_SCORE_3: i32 = 100;
 pub const PENALTY_FACTOR: f64 = 5.0;
 
-pub const FPS: f64 = 30.0;
-
 pub const WINDOW_WIDTH: f32 = 800.0;
 pub const WINDOW_HEIGHT: f32 = 600.0;
 

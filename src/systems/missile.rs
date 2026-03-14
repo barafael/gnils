@@ -32,7 +32,7 @@ pub fn fire_missile(
 
     let mut launch_pos = (0.0, 0.0);
     let mut speed = 0.0;
-    let mut angle_rad = 0.0;
+    let mut angle = 0.0_f64;
     let mut trail_color = PLAYER1_COLOR;
     let mut power_penalty = 0;
 
@@ -42,7 +42,7 @@ pub fn fire_missile(
         }
         launch_pos = get_launch_point_from_transform(&player, transform);
         speed = player.power;
-        angle_rad = player.angle.to_radians();
+        angle = player.angle; // already radians CCW from east
         trail_color = player.color_rgb;
         power_penalty = -(PENALTY_FACTOR * speed) as i32;
         player.attempts += 1;
@@ -52,8 +52,8 @@ pub fn fire_missile(
         body.pos = launch_pos;
         body.last_pos = launch_pos;
         body.velocity = (
-            0.1 * speed * angle_rad.sin(),
-            0.1 * speed * angle_rad.cos(),
+            0.1 * speed * angle.cos(),
+            0.1 * speed * angle.sin(),
         );
         body.flight = settings.max_flight;
 
@@ -69,8 +69,8 @@ pub fn fire_missile(
         current,
         launch_pos.0,
         launch_pos.1,
-        0.1 * speed * angle_rad.sin(),
-        0.1 * speed * angle_rad.cos(),
+        0.1 * speed * angle.cos(),
+        0.1 * speed * angle.sin(),
         speed
     );
     turn.last_player = current;

@@ -25,14 +25,15 @@ pub fn aiming_input(
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
 
+    // angle_step is in radians; values match the original degree increments converted.
     let (power_step, angle_step) = if ctrl {
-        (1.0, 0.25)
+        (1.0, 0.25_f64.to_radians())
     } else if shift {
-        (25.0, 5.0)
+        (25.0, 5.0_f64.to_radians())
     } else if alt {
-        (0.2, 0.05)
+        (0.2, 0.05_f64.to_radians())
     } else {
-        (10.0, 2.0)
+        (10.0, 2.0_f64.to_radians())
     };
 
     let current = turn.current_player;
@@ -53,24 +54,26 @@ pub fn aiming_input(
         if keys.pressed(KeyCode::ArrowDown) {
             player.power = (player.power - power_step).max(0.0);
         }
+        // In CCW-from-east convention, ArrowLeft rotates the gun toward north (CCW = +angle),
+        // ArrowRight rotates toward south (CW = -angle).
         if keys.pressed(KeyCode::ArrowLeft) {
-            player.angle -= angle_step;
-            player.rel_rot -= angle_step;
-            if player.angle < 0.0 {
-                player.angle += 360.0;
+            player.angle += angle_step;
+            player.rel_rot += angle_step;
+            if player.angle >= std::f64::consts::TAU {
+                player.angle -= std::f64::consts::TAU;
             }
-            if player.rel_rot < 0.0 {
-                player.rel_rot += 360.0;
+            if player.rel_rot >= std::f64::consts::TAU {
+                player.rel_rot -= std::f64::consts::TAU;
             }
         }
         if keys.pressed(KeyCode::ArrowRight) {
-            player.angle += angle_step;
-            player.rel_rot += angle_step;
-            if player.angle >= 360.0 {
-                player.angle -= 360.0;
+            player.angle -= angle_step;
+            player.rel_rot -= angle_step;
+            if player.angle < 0.0 {
+                player.angle += std::f64::consts::TAU;
             }
-            if player.rel_rot >= 360.0 {
-                player.rel_rot -= 360.0;
+            if player.rel_rot < 0.0 {
+                player.rel_rot += std::f64::consts::TAU;
             }
         }
 
@@ -319,12 +322,9 @@ fn reset_for_new_round(
         player.shot = false;
         player.attempts = 0;
         player.explosion_frame = 0;
-        player.rel_rot = 0.01;
-        if player.id == 1 {
-            player.angle = 90.0;
-        } else {
-            player.angle = 270.0;
-        }
+        player.rel_rot = 0.0;
+        // angle: radians CCW from east (P1 faces east = 0, P2 faces west = π)
+        player.angle = if player.id == 1 { 0.0 } else { std::f64::consts::PI };
     }
 
     for (mut marker, mut vis) in missile_q.iter_mut() {

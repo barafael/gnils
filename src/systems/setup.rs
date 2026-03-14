@@ -107,8 +107,8 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
         Transform::from_xyz(-360.0, y1 as f32, 4.0),
         Player {
             id: 1,
-            angle: 90.0,
-            rel_rot: 0.01,
+            angle: 0.0, // radians CCW from east: 0 = east
+            rel_rot: 0.0,
             power: 100.0,
             score: 0,
             attempts: 0,
@@ -143,8 +143,8 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
         Transform::from_xyz(360.0, y2 as f32, 4.0),
         Player {
             id: 2,
-            angle: 270.0,
-            rel_rot: 0.01,
+            angle: std::f64::consts::PI, // radians CCW from east: π = west
+            rel_rot: 0.0,
             power: 100.0,
             score: 0,
             attempts: 0,
