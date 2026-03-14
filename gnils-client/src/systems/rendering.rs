@@ -353,10 +353,10 @@ pub fn update_menu_display(
     }
 
     // Display rows: (label, value_string). Empty label = separator line.
-    let new_game_label = if net_mode.is_network() { "Main Menu" } else { "New Game" };
     let rows: &[(&str, Option<String>)] = &[
         ("Resume Game", None),
-        (new_game_label, None),
+        ("New Game", None),
+        ("Main Menu", None),
         ("", None),
         ("Bounce", Some(bool_str(settings.bounce))),
         ("Fixed Power", Some(bool_str(settings.fixed_power))),
@@ -368,7 +368,7 @@ pub fn update_menu_display(
         (
             "Rounds",
             Some(if settings.max_rounds == 0 {
-                "∞".into()
+                "inf".into()
             } else {
                 settings.max_rounds.to_string()
             }),
@@ -386,13 +386,13 @@ pub fn update_menu_display(
         .collect();
     let selected_row = selectable.get(menu.selected).copied().unwrap_or(0);
 
-    let mut lines = vec!["  ── SETTINGS ──".to_string(), String::new()];
+    let mut lines = vec!["  -- SETTINGS --".to_string(), String::new()];
     for (i, (label, value)) in rows.iter().enumerate() {
         if label.is_empty() {
             lines.push(String::new());
             continue;
         }
-        let arrow = if i == selected_row { "►" } else { "  " };
+        let arrow = if i == selected_row { "> " } else { "  " };
         match value {
             None => lines.push(format!("{}  {}", arrow, label)),
             Some(v) => lines.push(format!("{}  {:<22}{}", arrow, label, v)),

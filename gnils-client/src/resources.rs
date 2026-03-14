@@ -99,7 +99,7 @@ impl Default for GameSettings {
             invisible: false,
             fixed_power: false,
             particles_enabled: true,
-            max_rounds: 0,
+            max_rounds: 3,
             max_flight: MAX_FLIGHT,
             fullscreen: false,
         }

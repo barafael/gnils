@@ -182,7 +182,7 @@ pub fn menu_nav_input(
     }
 
     // Number of selectable (non-separator) items — must match rows in update_menu_display
-    const N_ITEMS: usize = 10;
+    const N_ITEMS: usize = 11;
 
     if keys.just_pressed(KeyCode::ArrowDown) {
         menu.selected = (menu.selected + 1) % N_ITEMS;
@@ -206,46 +206,47 @@ pub fn menu_nav_input(
         0 => {
             menu.open = false;
         }
-        // New Game (local) / Main Menu (network)
+        // New Game
         1 => {
             menu.open = false;
-            if net_mode.is_network() {
-                *net_mode = NetworkMode::Local;
-                next_state.set(GamePhase::MainMenu);
-            } else {
-                for mut player in players.iter_mut() {
-                    player.score = 0;
-                }
-                turn.round = 0;
-                turn.game_over = false;
-                reset_for_new_round(
-                    &mut turn,
-                    &mut players,
-                    &mut missile_q,
-                    &trail_canvas,
-                    &mut images,
-                );
-                next_state.set(GamePhase::RoundSetup);
+            for mut player in players.iter_mut() {
+                player.score = 0;
             }
+            turn.round = 0;
+            turn.game_over = false;
+            reset_for_new_round(
+                &mut turn,
+                &mut players,
+                &mut missile_q,
+                &trail_canvas,
+                &mut images,
+            );
+            next_state.set(GamePhase::RoundSetup);
+        }
+        // Main Menu
+        2 => {
+            menu.open = false;
+            *net_mode = NetworkMode::Local;
+            next_state.set(GamePhase::MainMenu);
         }
         // Bounce
-        2 => {
+        3 => {
             settings.bounce = !settings.bounce;
         }
         // Fixed Power
-        3 => {
+        4 => {
             settings.fixed_power = !settings.fixed_power;
         }
         // Invisible Planets
-        4 => {
+        5 => {
             settings.invisible = !settings.invisible;
         }
         // Particles
-        5 => {
+        6 => {
             settings.particles_enabled = !settings.particles_enabled;
         }
         // Max Planets (cycle 2→3→4→2)
-        6 => {
+        7 => {
             settings.max_planets = if left {
                 if settings.max_planets <= 2 {
                     4
@@ -261,7 +262,7 @@ pub fn menu_nav_input(
             };
         }
         // Max Blackholes (cycle 0→1→2→3→0)
-        7 => {
+        8 => {
             settings.max_blackholes = if left {
                 if settings.max_blackholes == 0 {
                     3
@@ -272,9 +273,9 @@ pub fn menu_nav_input(
                 (settings.max_blackholes + 1) % 4
             };
         }
-        // Rounds (cycle ∞→5→10→20→∞)
-        8 => {
-            let options = [0u32, 5, 10, 20];
+        // Rounds (cycle 3→5→10→20→inf→3)
+        9 => {
+            let options = [3u32, 5, 10, 20, 0];
             let idx = options
                 .iter()
                 .position(|&v| v == settings.max_rounds)
@@ -287,7 +288,7 @@ pub fn menu_nav_input(
             settings.max_rounds = options[new_idx];
         }
         // Fullscreen
-        9 => {
+        10 => {
             settings.fullscreen = !settings.fullscreen;
             if let Ok(mut window) = window_q.single_mut() {
                 window.mode = if settings.fullscreen {
