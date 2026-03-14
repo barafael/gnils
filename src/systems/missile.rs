@@ -64,9 +64,15 @@ pub fn fire_missile(
         *vis = Visibility::Visible;
     }
 
-    info!("Player {} fires: pos=({:.1},{:.1}) vel=({:.2},{:.2}) power={:.1}",
-        current, launch_pos.0, launch_pos.1,
-        0.1 * speed * angle_rad.sin(), -0.1 * speed * angle_rad.cos(), speed);
+    info!(
+        "Player {} fires: pos=({:.1},{:.1}) vel=({:.2},{:.2}) power={:.1}",
+        current,
+        launch_pos.0,
+        launch_pos.1,
+        0.1 * speed * angle_rad.sin(),
+        -0.1 * speed * angle_rad.cos(),
+        speed
+    );
     turn.last_player = current;
     turn.current_player = 0; // no player active while firing
 }

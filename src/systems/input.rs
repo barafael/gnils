@@ -1,15 +1,21 @@
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, WindowMode};
 
+use gnils_protocol::ClientMsg;
+use lightyear::prelude::MessageSender;
+
 use crate::components::*;
 use crate::constants::*;
 use crate::resources::*;
+use crate::systems::network::send_fire_shot;
 
 pub fn aiming_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut turn: ResMut<TurnState>,
     mut players: Query<&mut Player, Without<ShipBlendSprite>>,
     menu: Res<MenuOpen>,
+    net_mode: Res<NetworkMode>,
+    mut senders: Query<&mut MessageSender<ClientMsg>>,
 ) {
     if turn.round_over || turn.firing || menu.open {
         return;
@@ -31,6 +37,11 @@ pub fn aiming_input(
 
     let current = turn.current_player;
 
+    // In network mode, only the active player (this client's ID) can control the ship
+    if let Some(pid) = net_mode.player_id() {
+        if current != pid { return; }
+    }
+
     for mut player in players.iter_mut() {
         if player.id != current {
             continue;
@@ -45,17 +56,30 @@ pub fn aiming_input(
         if keys.pressed(KeyCode::ArrowLeft) {
             player.angle -= angle_step;
             player.rel_rot -= angle_step;
-            if player.angle < 0.0 { player.angle += 360.0; }
-            if player.rel_rot < 0.0 { player.rel_rot += 360.0; }
+            if player.angle < 0.0 {
+                player.angle += 360.0;
+            }
+            if player.rel_rot < 0.0 {
+                player.rel_rot += 360.0;
+            }
         }
         if keys.pressed(KeyCode::ArrowRight) {
             player.angle += angle_step;
             player.rel_rot += angle_step;
-            if player.angle >= 360.0 { player.angle -= 360.0; }
-            if player.rel_rot >= 360.0 { player.rel_rot -= 360.0; }
+            if player.angle >= 360.0 {
+                player.angle -= 360.0;
+            }
+            if player.rel_rot >= 360.0 {
+                player.rel_rot -= 360.0;
+            }
         }
 
         if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) {
+            if net_mode.is_network() {
+                // Network mode: send the shot to server; server drives physics
+                send_fire_shot(player.angle, player.power, &mut senders);
+            }
+            // Both modes: set firing flag to transition Aiming → Firing
             turn.firing = true;
         }
     }
@@ -70,8 +94,13 @@ pub fn round_over_input(
     mut images: ResMut<Assets<Image>>,
     mut next_state: ResMut<NextState<GamePhase>>,
     menu: Res<MenuOpen>,
+    net_mode: Res<NetworkMode>,
 ) {
     if !turn.round_over || menu.open {
+        return;
+    }
+    // In network mode the server drives round transitions; Space/Enter does nothing here
+    if net_mode.is_network() {
         return;
     }
 
@@ -88,13 +117,25 @@ pub fn round_over_input(
         let mut p1_score = 0;
         let mut p2_score = 0;
         for player in players.iter() {
-            if player.id == 1 { p1_score = player.score; }
-            else { p2_score = player.score; }
+            if player.id == 1 {
+                p1_score = player.score;
+            } else {
+                p2_score = player.score;
+            }
         }
-        if p1_score < p2_score { turn.current_player = 1; }
-        else if p2_score < p1_score { turn.current_player = 2; }
+        if p1_score < p2_score {
+            turn.current_player = 1;
+        } else if p2_score < p1_score {
+            turn.current_player = 2;
+        }
 
-        reset_for_new_round(&mut turn, &mut players, &mut missile_q, &trail_canvas, &mut images);
+        reset_for_new_round(
+            &mut turn,
+            &mut players,
+            &mut missile_q,
+            &trail_canvas,
+            &mut images,
+        );
         next_state.set(GamePhase::RoundSetup);
     }
 }
@@ -131,6 +172,7 @@ pub fn menu_nav_input(
     mut images: ResMut<Assets<Image>>,
     mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
     mut window_q: Query<&mut Window>,
+    mut net_mode: ResMut<NetworkMode>,
 ) {
     if !menu.open {
         return;
@@ -158,38 +200,71 @@ pub fn menu_nav_input(
 
     match menu.selected {
         // Resume Game
-        0 => { menu.open = false; }
-        // New Game
+        0 => {
+            menu.open = false;
+        }
+        // New Game (local) / Main Menu (network)
         1 => {
             menu.open = false;
-            for mut player in players.iter_mut() {
-                player.score = 0;
+            if net_mode.is_network() {
+                *net_mode = NetworkMode::Local;
+                next_state.set(GamePhase::MainMenu);
+            } else {
+                for mut player in players.iter_mut() {
+                    player.score = 0;
+                }
+                turn.round = 0;
+                turn.game_over = false;
+                reset_for_new_round(
+                    &mut turn,
+                    &mut players,
+                    &mut missile_q,
+                    &trail_canvas,
+                    &mut images,
+                );
+                next_state.set(GamePhase::RoundSetup);
             }
-            turn.round = 0;
-            turn.game_over = false;
-            reset_for_new_round(&mut turn, &mut players, &mut missile_q, &trail_canvas, &mut images);
-            next_state.set(GamePhase::RoundSetup);
         }
         // Bounce
-        2 => { settings.bounce = !settings.bounce; }
+        2 => {
+            settings.bounce = !settings.bounce;
+        }
         // Fixed Power
-        3 => { settings.fixed_power = !settings.fixed_power; }
+        3 => {
+            settings.fixed_power = !settings.fixed_power;
+        }
         // Invisible Planets
-        4 => { settings.invisible = !settings.invisible; }
+        4 => {
+            settings.invisible = !settings.invisible;
+        }
         // Particles
-        5 => { settings.particles_enabled = !settings.particles_enabled; }
+        5 => {
+            settings.particles_enabled = !settings.particles_enabled;
+        }
         // Max Planets (cycle 2→3→4→2)
         6 => {
             settings.max_planets = if left {
-                if settings.max_planets <= 2 { 4 } else { settings.max_planets - 1 }
+                if settings.max_planets <= 2 {
+                    4
+                } else {
+                    settings.max_planets - 1
+                }
             } else {
-                if settings.max_planets >= 4 { 2 } else { settings.max_planets + 1 }
+                if settings.max_planets >= 4 {
+                    2
+                } else {
+                    settings.max_planets + 1
+                }
             };
         }
         // Max Blackholes (cycle 0→1→2→3→0)
         7 => {
             settings.max_blackholes = if left {
-                if settings.max_blackholes == 0 { 3 } else { settings.max_blackholes - 1 }
+                if settings.max_blackholes == 0 {
+                    3
+                } else {
+                    settings.max_blackholes - 1
+                }
             } else {
                 (settings.max_blackholes + 1) % 4
             };
@@ -197,7 +272,10 @@ pub fn menu_nav_input(
         // Rounds (cycle ∞→5→10→20→∞)
         8 => {
             let options = [0u32, 5, 10, 20];
-            let idx = options.iter().position(|&v| v == settings.max_rounds).unwrap_or(0);
+            let idx = options
+                .iter()
+                .position(|&v| v == settings.max_rounds)
+                .unwrap_or(0);
             let new_idx = if left {
                 (idx + options.len() - 1) % options.len()
             } else {
@@ -242,7 +320,11 @@ fn reset_for_new_round(
         player.attempts = 0;
         player.explosion_frame = 0;
         player.rel_rot = 0.01;
-        if player.id == 1 { player.angle = 90.0; } else { player.angle = 270.0; }
+        if player.id == 1 {
+            player.angle = 90.0;
+        } else {
+            player.angle = 270.0;
+        }
     }
 
     for (mut marker, mut vis) in missile_q.iter_mut() {

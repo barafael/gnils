@@ -2,15 +2,80 @@ use bevy::prelude::*;
 
 use crate::constants::*;
 
+// ── Game phases ────────────────────────────────────────────────────────────
+
 #[derive(States, Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum GamePhase {
+    /// Splash / main menu shown on startup.
     #[default]
+    MainMenu,
+    /// Connecting to server (network mode only).
+    Connecting,
+    /// Connected; waiting for the server to send GameStart once both players are ready.
+    WaitingForOpponent,
+    /// Loading assets; entered after GameStart or local New Game.
     Loading,
     RoundSetup,
     Aiming,
     Firing,
     RoundOver,
+    GameOver,
 }
+
+// ── Network mode ───────────────────────────────────────────────────────────
+
+/// Whether this session is local hotseat or networked.
+#[derive(Resource, Default, Clone, PartialEq, Eq, Debug)]
+pub enum NetworkMode {
+    #[default]
+    Local,
+    /// Connected to server; `player_id` is 1 or 2.
+    Network { player_id: u8 },
+}
+
+impl NetworkMode {
+    pub fn is_network(&self) -> bool {
+        matches!(self, NetworkMode::Network { .. })
+    }
+    pub fn player_id(&self) -> Option<u8> {
+        if let NetworkMode::Network { player_id } = self {
+            Some(*player_id)
+        } else {
+            None
+        }
+    }
+}
+
+/// Text being typed in the join-game field.
+#[derive(Resource, Default)]
+pub struct JoinAddress {
+    pub text: String,
+    /// Certificate hash for WASM clients (hex).
+    pub cert_hash: String,
+}
+
+/// Lobby menu state.
+#[derive(Resource, Default)]
+pub struct LobbyMenu {
+    pub selected: usize,
+    pub screen: LobbyScreen,
+    /// For host screen: cert hash received from spawned gnils-server.
+    pub cert_hash: String,
+    pub server_spawned: bool,
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LobbyScreen {
+    #[default]
+    Main,
+    NetworkSub,
+    Host,
+    Join,
+    Settings,
+    Help,
+}
+
+// ── Game settings ──────────────────────────────────────────────────────────
 
 #[derive(Resource)]
 pub struct GameSettings {
@@ -41,13 +106,40 @@ impl Default for GameSettings {
     }
 }
 
-/// State of the in-game settings menu.
+impl GameSettings {
+    pub fn to_protocol(&self) -> gnils_protocol::GameSettingsData {
+        gnils_protocol::GameSettingsData {
+            max_planets: self.max_planets,
+            max_blackholes: self.max_blackholes,
+            bounce: self.bounce,
+            invisible: self.invisible,
+            fixed_power: self.fixed_power,
+            particles_enabled: self.particles_enabled,
+            max_rounds: self.max_rounds,
+            max_flight: self.max_flight,
+        }
+    }
+
+    pub fn apply_from_protocol(&mut self, data: &gnils_protocol::GameSettingsData) {
+        self.max_planets = data.max_planets;
+        self.max_blackholes = data.max_blackholes;
+        self.bounce = data.bounce;
+        self.invisible = data.invisible;
+        self.fixed_power = data.fixed_power;
+        self.particles_enabled = data.particles_enabled;
+        self.max_rounds = data.max_rounds;
+        self.max_flight = data.max_flight;
+    }
+}
+
+/// State of the in-game settings menu (opened with Escape during play).
 #[derive(Resource, Default)]
 pub struct MenuOpen {
     pub open: bool,
     pub selected: usize,
 }
 
+// ── Turn state ─────────────────────────────────────────────────────────────
 
 #[derive(Resource)]
 pub struct TurnState {
@@ -81,6 +173,8 @@ impl Default for TurnState {
         }
     }
 }
+
+// ── Asset / rendering resources ────────────────────────────────────────────
 
 #[derive(Resource)]
 pub struct TrailCanvas {
@@ -119,17 +213,17 @@ pub struct GameAssets {
 /// Result of the last round (for end-round message display).
 #[derive(Resource, Default)]
 pub struct RoundResult {
-    pub hit_player: u8,       // who was hit (0 = no hit yet)
-    pub shooter: u8,           // who fired the shot
+    pub hit_player: u8,
+    pub shooter: u8,
     pub self_hit: bool,
     pub hit_score: i32,
     pub quick_bonus: i32,
     pub power_penalty: i32,
     pub total_score: i32,
-    pub message: String,       // e.g. "Player 1 hits Player 2!"
+    pub message: String,
 }
 
-/// Queued particle spawn requests, processed each frame by the particle spawn system.
+/// Queued particle spawn requests.
 #[derive(Resource, Default)]
 pub struct ParticleSpawnQueue {
     pub requests: Vec<ParticleSpawnRequest>,
@@ -141,7 +235,7 @@ pub struct ParticleSpawnRequest {
     pub size: u8,
 }
 
-/// Queued missile impact, processed by the impact handling system.
+/// Queued missile impacts.
 #[derive(Resource, Default)]
 pub struct MissileImpactQueue {
     pub impacts: Vec<MissileImpact>,

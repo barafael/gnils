@@ -1,0 +1,25 @@
+[package]
+name = "gnils-server"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "gnils-server"
+path = "src/main.rs"
+
+[dependencies]
+gnils-protocol = { path = "../gnils-protocol" }
+bevy = { version = "0.18", default-features = false, features = [
+    "bevy_state",
+    "bevy_log",
+    "multi_threaded",
+] }
+lightyear = { version = "0.26.4", features = [
+    "server",
+    "webtransport",
+    "webtransport_self_signed",
+    "netcode",
+    "replication",
+] }
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }

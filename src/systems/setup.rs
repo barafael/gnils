@@ -335,43 +335,47 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
         });
 
     // Settings menu overlay (full-screen, hidden by default)
-    commands.spawn((
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(0.0),
-            left: Val::Px(0.0),
-            right: Val::Px(0.0),
-            bottom: Val::Px(0.0),
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            ..default()
-        },
-        Visibility::Hidden,
-        ZIndex(20),
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
-        crate::components::UiMenuOverlay,
-    )).with_children(|parent| {
-        parent.spawn((
+    commands
+        .spawn((
             Node {
-                padding: UiRect::axes(Val::Px(50.0), Val::Px(30.0)),
-                border: UiRect::all(Val::Px(1.0)),
+                position_type: PositionType::Absolute,
+                top: Val::Px(0.0),
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                bottom: Val::Px(0.0),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.1, 0.95)),
-            BorderColor::all(Color::srgb(0.0, 0.0, 0.8)),
-        )).with_children(|box_parent| {
-            box_parent.spawn((
-                Text::new(""),
-                TextFont {
-                    font: assets.font.clone(),
-                    font_size: 14.0,
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-                crate::components::UiMenuText,
-            ));
+            Visibility::Hidden,
+            ZIndex(20),
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+            crate::components::UiMenuOverlay,
+        ))
+        .with_children(|parent| {
+            parent
+                .spawn((
+                    Node {
+                        padding: UiRect::axes(Val::Px(50.0), Val::Px(30.0)),
+                        border: UiRect::all(Val::Px(1.0)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::srgba(0.0, 0.0, 0.1, 0.95)),
+                    BorderColor::all(Color::srgb(0.0, 0.0, 0.8)),
+                ))
+                .with_children(|box_parent| {
+                    box_parent.spawn((
+                        Text::new(""),
+                        TextFont {
+                            font: assets.font.clone(),
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(Color::WHITE),
+                        crate::components::UiMenuText,
+                    ));
+                });
         });
-    });
 
     // End round message container (centered box with dark background)
     commands
@@ -400,11 +404,7 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
                         ..default()
                     },
                     BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 175.0 / 255.0)),
-                    BorderColor::all(Color::srgb(
-                        150.0 / 255.0,
-                        150.0 / 255.0,
-                        150.0 / 255.0,
-                    )),
+                    BorderColor::all(Color::srgb(150.0 / 255.0, 150.0 / 255.0, 150.0 / 255.0)),
                 ))
                 .with_children(|box_parent| {
                     // Text inside the box

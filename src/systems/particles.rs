@@ -61,9 +61,7 @@ pub fn spawn_particles(
                     last_pos: pos,
                     flight: MAX_FLIGHT,
                 },
-                ParticleMarker {
-                    size: request.size,
-                },
+                ParticleMarker { size: request.size },
             ));
         }
     }

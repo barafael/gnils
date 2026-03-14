@@ -28,10 +28,18 @@ pub fn draw_bounce_border(
     let half_w = 400.0;
     let half_h = 300.0;
 
-    gizmos.line_2d(Vec2::new(-half_w, -half_h), Vec2::new(half_w, -half_h), color);
+    gizmos.line_2d(
+        Vec2::new(-half_w, -half_h),
+        Vec2::new(half_w, -half_h),
+        color,
+    );
     gizmos.line_2d(Vec2::new(half_w, -half_h), Vec2::new(half_w, half_h), color);
     gizmos.line_2d(Vec2::new(half_w, half_h), Vec2::new(-half_w, half_h), color);
-    gizmos.line_2d(Vec2::new(-half_w, half_h), Vec2::new(-half_w, -half_h), color);
+    gizmos.line_2d(
+        Vec2::new(-half_w, half_h),
+        Vec2::new(-half_w, -half_h),
+        color,
+    );
 }
 
 /// Hide/show angle-power UI based on game state.
@@ -136,7 +144,11 @@ pub fn draw_zoom_view(
     let show_zoom = turn.firing && !missile_on_screen && missile_pos.is_some();
 
     for mut vis in dim_q.iter_mut() {
-        *vis = if show_zoom { Visibility::Visible } else { Visibility::Hidden };
+        *vis = if show_zoom {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
     }
 
     if !show_zoom {
@@ -287,8 +299,11 @@ pub fn update_round_over_display(
                 let mut p1_score = 0;
                 let mut p2_score = 0;
                 for player in players.iter() {
-                    if player.id == 1 { p1_score = player.score; }
-                    else { p2_score = player.score; }
+                    if player.id == 1 {
+                        p1_score = player.score;
+                    } else {
+                        p2_score = player.score;
+                    }
                 }
                 if p1_score > p2_score {
                     lines.push("Player 1 has won the game".to_string());
@@ -316,11 +331,16 @@ pub fn update_round_over_display(
 pub fn update_menu_display(
     settings: Res<GameSettings>,
     menu: Res<MenuOpen>,
+    net_mode: Res<NetworkMode>,
     mut vis_q: Query<&mut Visibility, With<UiMenuOverlay>>,
     mut text_q: Query<&mut Text, With<crate::components::UiMenuText>>,
 ) {
     for mut vis in vis_q.iter_mut() {
-        *vis = if menu.open { Visibility::Visible } else { Visibility::Hidden };
+        *vis = if menu.open {
+            Visibility::Visible
+        } else {
+            Visibility::Hidden
+        };
     }
 
     if !menu.open {
@@ -328,14 +348,15 @@ pub fn update_menu_display(
     }
 
     // Only rebuild text when something actually changed
-    if !menu.is_changed() && !settings.is_changed() {
+    if !menu.is_changed() && !settings.is_changed() && !net_mode.is_changed() {
         return;
     }
 
     // Display rows: (label, value_string). Empty label = separator line.
+    let new_game_label = if net_mode.is_network() { "Main Menu" } else { "New Game" };
     let rows: &[(&str, Option<String>)] = &[
         ("Resume Game", None),
-        ("New Game", None),
+        (new_game_label, None),
         ("", None),
         ("Bounce", Some(bool_str(settings.bounce))),
         ("Fixed Power", Some(bool_str(settings.fixed_power))),
@@ -344,22 +365,28 @@ pub fn update_menu_display(
         ("", None),
         ("Max Planets", Some(settings.max_planets.to_string())),
         ("Max Blackholes", Some(settings.max_blackholes.to_string())),
-        ("Rounds", Some(if settings.max_rounds == 0 { "∞".into() } else { settings.max_rounds.to_string() })),
+        (
+            "Rounds",
+            Some(if settings.max_rounds == 0 {
+                "∞".into()
+            } else {
+                settings.max_rounds.to_string()
+            }),
+        ),
         ("", None),
         ("Fullscreen", Some(bool_str(settings.fullscreen))),
     ];
 
     // Map menu.selected index to display row index (skip separators)
-    let selectable: Vec<usize> = rows.iter().enumerate()
+    let selectable: Vec<usize> = rows
+        .iter()
+        .enumerate()
         .filter(|(_, (label, _))| !label.is_empty())
         .map(|(i, _)| i)
         .collect();
     let selected_row = selectable.get(menu.selected).copied().unwrap_or(0);
 
-    let mut lines = vec![
-        "  ── SETTINGS ──".to_string(),
-        String::new(),
-    ];
+    let mut lines = vec!["  ── SETTINGS ──".to_string(), String::new()];
     for (i, (label, value)) in rows.iter().enumerate() {
         if label.is_empty() {
             lines.push(String::new());

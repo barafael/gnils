@@ -12,6 +12,8 @@ use bevy::window::WindowResolution;
 use components::MissileMarker;
 use constants::*;
 use resources::*;
+use systems::lobby::LobbyPlugin;
+use systems::network::GnilsClientNetPlugin;
 
 fn main() {
     App::new()
@@ -24,6 +26,10 @@ fn main() {
             }),
             ..default()
         }))
+        // Network plugin (registers Lightyear client, channels, messages)
+        .add_plugins(GnilsClientNetPlugin)
+        // Lobby / main menu plugin
+        .add_plugins(LobbyPlugin)
         // Fixed timestep at 30 Hz to match original physics
         .insert_resource(Time::<Fixed>::from_hz(FPS))
         // Game state
@@ -36,6 +42,9 @@ fn main() {
         .insert_resource(MissileImpactQueue::default())
         .insert_resource(RoundResult::default())
         .insert_resource(MenuOpen::default())
+        .insert_resource(NetworkMode::default())
+        .insert_resource(JoinAddress::default())
+        .insert_resource(LobbyMenu::default())
         // Startup systems (run once)
         .add_systems(
             Startup,
@@ -54,40 +63,49 @@ fn main() {
             )
                 .after(systems::setup::load_assets),
         )
-        // Round setup state
+        // Round setup state (local only; in network mode the server drives RoundSetup via message)
         .add_systems(
             OnEnter(GamePhase::RoundSetup),
-            (systems::planet::spawn_planets, systems::round::round_setup).chain(),
+            (systems::planet::spawn_planets, systems::round::round_setup)
+                .chain()
+                .run_if(resource_equals(NetworkMode::Local)),
         )
         // Aiming input (Update for reliable key detection)
         .add_systems(
             Update,
             systems::input::aiming_input.run_if(in_state(GamePhase::Aiming)),
         )
-        // Fire missile (FixedUpdate for physics setup)
+        // Fire missile (FixedUpdate for physics setup) — local only; server drives in network mode
         .add_systems(
             FixedUpdate,
-            (
-                systems::missile::fire_missile,
-                fire_transition_system,
-            )
+            (systems::missile::fire_missile, fire_transition_system)
                 .chain()
-                .run_if(in_state(GamePhase::Aiming)),
+                .run_if(in_state(GamePhase::Aiming).and(resource_equals(NetworkMode::Local))),
         )
         // Firing phase (physics at fixed timestep)
         .add_systems(
             FixedUpdate,
             (
                 systems::physics::missile_gravity,
-                systems::collision::missile_collision,
                 systems::missile::draw_missile_trail,
                 systems::physics::particle_gravity,
                 systems::collision::particle_collision,
                 systems::particles::cleanup_particles,
-                firing_done_system,
             )
                 .chain()
                 .run_if(in_state(GamePhase::Firing)),
+        )
+        // Collision detection — local only; server handles collision in network mode
+        .add_systems(
+            FixedUpdate,
+            systems::collision::missile_collision
+                .run_if(in_state(GamePhase::Firing).and(resource_equals(NetworkMode::Local))),
+        )
+        // Firing → Aiming/RoundOver transition — local only; server drives transitions in network mode
+        .add_systems(
+            FixedUpdate,
+            firing_done_system
+                .run_if(in_state(GamePhase::Firing).and(resource_equals(NetworkMode::Local))),
         )
         // Impact handling & particle spawning — runs in any active state
         .add_systems(
@@ -192,7 +210,10 @@ fn firing_done_system(
             info!("Transitioning Firing → RoundOver");
             next_state.set(GamePhase::RoundOver);
         } else {
-            info!("Transitioning Firing → Aiming (player {})", turn.current_player);
+            info!(
+                "Transitioning Firing → Aiming (player {})",
+                turn.current_player
+            );
             next_state.set(GamePhase::Aiming);
         }
     }

@@ -1,46 +1,49 @@
 use bevy::prelude::*;
 
 use crate::components::*;
-use crate::constants::*;
 use crate::resources::*;
 use crate::systems::player::pygame_to_bevy;
 
-/// Shared gravity calculation for any GravityBody.
+// ── Gravity helpers ────────────────────────────────────────────────────────
+
+/// Collect planet data from ECS and call the shared pure-Rust gravity step.
 fn apply_gravity(body: &mut GravityBody, planets: &Query<&Planet>) {
-    body.last_pos = body.pos;
-    body.flight -= 1;
-    for planet in planets.iter() {
-        let px = planet.pos.x as f64;
-        let py = planet.pos.y as f64;
-        let mass = planet.mass;
-        let dx = body.pos.0 - px;
-        let dy = body.pos.1 - py;
-        let d = dx * dx + dy * dy;
-        if d < 1e-10 {
-            body.velocity.0 -= 10000.0;
-            body.velocity.1 -= 10000.0;
-            continue;
-        }
-        let d_sqrt = d.sqrt();
-        let ax = (GRAVITY * mass * dx) / (d * d_sqrt);
-        let ay = (GRAVITY * mass * dy) / (d * d_sqrt);
-        body.velocity.0 -= ax;
-        body.velocity.1 -= ay;
-    }
-    body.pos.0 += body.velocity.0;
-    body.pos.1 += body.velocity.1;
+    let planet_data: Vec<gnils_protocol::PlanetData> = planets
+        .iter()
+        .map(|p| gnils_protocol::PlanetData {
+            mass: p.mass,
+            radius: p.radius,
+            pos: (p.pos.x as f64, p.pos.y as f64),
+            is_blackhole: p.is_blackhole,
+            texture_index: 0,
+        })
+        .collect();
+
+    gnils_protocol::step_gravity(
+        &mut body.pos,
+        &mut body.velocity,
+        &mut body.last_pos,
+        &mut body.flight,
+        &planet_data,
+    );
 }
 
-/// Apply gravity from all planets to the missile.
+// ── ECS systems ────────────────────────────────────────────────────────────
+
+/// Apply gravity from all planets to the active missile.
 pub fn missile_gravity(
     mut missile_q: Query<(&mut GravityBody, &MissileMarker)>,
     planets: Query<&Planet>,
     turn: Res<TurnState>,
+    net_mode: Res<NetworkMode>,
 ) {
+    // In network mode the server drives the missile; client just renders received positions.
+    if net_mode.is_network() {
+        return;
+    }
     if !turn.firing {
         return;
     }
-
     for (mut body, marker) in missile_q.iter_mut() {
         if !marker.active {
             continue;
@@ -60,7 +63,6 @@ pub fn particle_gravity(
 }
 
 /// Sync GravityBody positions to Bevy Transform for rendering.
-/// Only updates position — visibility is managed by dedicated systems.
 pub fn sync_transforms(
     mut missiles: Query<(&GravityBody, &MissileMarker, &mut Transform), Without<ParticleMarker>>,
     mut particles: Query<(&GravityBody, &mut Transform), With<ParticleMarker>>,
