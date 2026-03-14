@@ -74,9 +74,11 @@ pub fn handle_missile_impact(
                         message: format!("Player {} hit themselves!", last),
                     };
                 } else {
+                    // Quickhit bonus: based on how many shots the VICTIM fired this round
+                    // (Python: self.players[victim].attempts)
                     let mut bonus = 0;
                     for player in players.iter() {
-                        if player.id == last {
+                        if player.id == hit_id {
                             bonus = match player.attempts {
                                 1 => QUICK_SCORE_1,
                                 2 => QUICK_SCORE_2,

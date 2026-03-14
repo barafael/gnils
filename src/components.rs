@@ -54,6 +54,16 @@ pub struct ParticleMarker {
     pub size: u8,
 }
 
+/// Second sprite layer for ship frame blending (companion to Player entity).
+#[derive(Component)]
+pub struct ShipBlendSprite {
+    pub player_id: u8,
+}
+
+/// Full-screen dim sprite shown behind the zoom minimap.
+#[derive(Component)]
+pub struct ZoomDimSprite;
+
 #[derive(Component)]
 pub struct TrailSprite;
 
@@ -80,4 +90,8 @@ pub struct UiDimOverlay;
 
 #[derive(Component)]
 pub struct UiEndRoundMsg;
+
+/// Root container for the settings menu overlay.
+#[derive(Component)]
+pub struct UiMenuOverlay;
 

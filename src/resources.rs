@@ -19,9 +19,11 @@ pub struct GameSettings {
     pub max_blackholes: u32,
     pub bounce: bool,
     pub invisible: bool,
+    pub fixed_power: bool,
     pub particles_enabled: bool,
     pub max_rounds: u32,
     pub max_flight: i32,
+    pub fullscreen: bool,
 }
 
 impl Default for GameSettings {
@@ -31,12 +33,22 @@ impl Default for GameSettings {
             max_blackholes: 0,
             bounce: false,
             invisible: false,
+            fixed_power: false,
             particles_enabled: true,
             max_rounds: 0,
             max_flight: MAX_FLIGHT,
+            fullscreen: false,
         }
     }
 }
+
+/// State of the in-game settings menu.
+#[derive(Resource, Default)]
+pub struct MenuOpen {
+    pub open: bool,
+    pub selected: usize,
+}
+
 
 #[derive(Resource)]
 pub struct TurnState {

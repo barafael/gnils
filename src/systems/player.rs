@@ -5,15 +5,21 @@ use crate::constants::*;
 use crate::resources::*;
 
 /// Update player ship transforms based on position and rotation.
-/// Selects the correct atlas frame and applies full rotation via Transform.
-/// Original Python: selects frame from rel_rot, then does rotozoom(-rel_rot, 1.0).
+/// Selects atlas frames using ship_blend::compute_blend_frames and updates
+/// a companion ShipBlendSprite for smooth inter-frame blending.
 pub fn update_player_sprites(
-    mut players: Query<(&Player, &mut Transform, &mut Sprite)>,
+    mut players: Query<(&Player, &mut Transform, &mut Sprite), Without<ShipBlendSprite>>,
+    mut blend_sprites: Query<(&ShipBlendSprite, &mut Transform, &mut Sprite), Without<Player>>,
     assets: Res<GameAssets>,
 ) {
     for (player, mut transform, mut sprite) in players.iter_mut() {
-        // Skip players in explosion animation
         if player.shot {
+            // Hide companion blend sprite during explosion
+            for (blend, _, mut b_sprite) in blend_sprites.iter_mut() {
+                if blend.player_id == player.id {
+                    b_sprite.color = Color::NONE;
+                }
+            }
             continue;
         }
 
@@ -32,22 +38,56 @@ pub fn update_player_sprites(
             sprite.custom_size = None;
         }
 
-        // Python formula: img1 = round((rel_rot + 22.5) / 45 - 0.49) % 8
-        let frame = ((player.rel_rot + 22.5) / 45.0 - 0.49).round() as i32;
-        let frame = ((frame % 8) + 8) as usize % 8;
+        // Compute blend frames: img1 = primary frame, img2 = secondary, f = blend factor
+        let (img1, img2, blend_f) = crate::ship_blend::compute_blend_frames(player.rel_rot);
 
         if let Some(ref mut atlas) = sprite.texture_atlas {
-            atlas.index = frame;
+            atlas.index = img1;
         }
+        sprite.color = Color::WHITE;
 
         // Full rotation matching Python's rotozoom(-rel_rot, 1.0)
         transform.rotation = Quat::from_rotation_z(-(player.rel_rot as f32).to_radians());
+
+        // Update blend sprite: mirror position/rotation, different frame, partial alpha
+        for (blend, mut b_transform, mut b_sprite) in blend_sprites.iter_mut() {
+            if blend.player_id != player.id {
+                continue;
+            }
+
+            // Restore blend sprite image if needed (e.g. after explosion)
+            if b_sprite.texture_atlas.is_none() {
+                let ship_image = if player.id == 1 {
+                    assets.red_ship.clone()
+                } else {
+                    assets.blue_ship.clone()
+                };
+                b_sprite.image = ship_image;
+                b_sprite.texture_atlas = Some(TextureAtlas {
+                    layout: assets.ship_atlas_layout.clone(),
+                    index: img2,
+                });
+                b_sprite.custom_size = None;
+            }
+
+            if let Some(ref mut atlas) = b_sprite.texture_atlas {
+                atlas.index = img2;
+            }
+            b_sprite.color = Color::srgba(1.0, 1.0, 1.0, blend_f as f32);
+            b_transform.translation = transform.translation + Vec3::Z * 0.05;
+            b_transform.rotation = transform.rotation;
+        }
     }
 }
 
 /// Draw the aiming line using gizmos.
-pub fn draw_aim_line(mut gizmos: Gizmos, players: Query<(&Player, &Transform)>, turn: Res<TurnState>) {
-    if turn.firing || turn.round_over {
+pub fn draw_aim_line(
+    mut gizmos: Gizmos,
+    players: Query<(&Player, &Transform), Without<ShipBlendSprite>>,
+    turn: Res<TurnState>,
+    menu: Res<crate::resources::MenuOpen>,
+) {
+    if turn.firing || turn.round_over || menu.open {
         return;
     }
 
@@ -56,14 +96,10 @@ pub fn draw_aim_line(mut gizmos: Gizmos, players: Query<(&Player, &Transform)>, 
             continue;
         }
 
-        // Get launch point in pygame coords
         let (lx, ly) = get_launch_point_from_transform(player, transform);
-
-        // End point of aim line
         let end_x = lx + player.power * player.angle.to_radians().sin();
         let end_y = ly - player.power * player.angle.to_radians().cos();
 
-        // Convert both to bevy coords
         let start_bevy = pygame_to_bevy(lx, ly);
         let end_bevy = pygame_to_bevy(end_x, end_y);
 
@@ -74,7 +110,8 @@ pub fn draw_aim_line(mut gizmos: Gizmos, players: Query<(&Player, &Transform)>, 
 /// Update ship explosion animation for hit players.
 /// Uses half-frame increments since this runs at ~60fps but Python runs at 30fps.
 pub fn update_ship_explosion(
-    mut players: Query<(&mut Player, &mut Sprite, &mut Transform)>,
+    mut players: Query<(&mut Player, &mut Sprite, &mut Transform), Without<ShipBlendSprite>>,
+    mut blend_sprites: Query<(&ShipBlendSprite, &mut Sprite), Without<Player>>,
     assets: Res<GameAssets>,
 ) {
     for (mut player, mut sprite, mut transform) in players.iter_mut() {
@@ -85,11 +122,9 @@ pub fn update_ship_explosion(
         // Increment at half speed to match 30fps original
         player.explosion_frame += 1;
         let e = player.explosion_frame as f64 * 0.5;
-        // Parabolic size curve: grows then shrinks, max at e=3 (s=100)
         let s = e * (6.0 - e) * 100.0 / 9.0;
 
         if s > 0.0 {
-            // Transition to explosion sprite only on the first frame (atlas present → no atlas)
             if sprite.texture_atlas.is_some() {
                 sprite.image = assets.explosion.clone();
                 sprite.texture_atlas = None;
@@ -97,15 +132,21 @@ pub fn update_ship_explosion(
             }
             sprite.custom_size = Some(Vec2::new(s as f32, s as f32));
         } else {
-            // Explosion finished — hide the ship
             sprite.custom_size = Some(Vec2::ZERO);
+        }
+
+        // Hide blend sprite during explosion
+        for (blend, mut b_sprite) in blend_sprites.iter_mut() {
+            if blend.player_id == player.id {
+                b_sprite.color = Color::NONE;
+            }
         }
     }
 }
 
 /// Update UI text for scores and angle/power.
 pub fn update_ui_text(
-    players: Query<&Player>,
+    players: Query<&Player, Without<ShipBlendSprite>>,
     turn: Res<TurnState>,
     mut score_p1: Query<
         &mut Text,

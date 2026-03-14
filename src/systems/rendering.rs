@@ -16,7 +16,7 @@ pub fn update_bounce_animation(mut bounce: ResMut<BounceAnimation>) {
 /// Draw bounce border using gizmos.
 pub fn draw_bounce_border(
     mut gizmos: Gizmos,
-    settings: Res<crate::resources::GameSettings>,
+    settings: Res<GameSettings>,
     bounce: Res<BounceAnimation>,
 ) {
     if !settings.bounce {
@@ -25,28 +25,19 @@ pub fn draw_bounce_border(
 
     let r = bounce.count / 255.0;
     let color = Color::srgb(r, 0.0, 0.0);
-
-    // Draw rectangle border (800x600 in bevy coords = centered at 0,0)
     let half_w = 400.0;
     let half_h = 300.0;
 
-    gizmos.line_2d(
-        Vec2::new(-half_w, -half_h),
-        Vec2::new(half_w, -half_h),
-        color,
-    );
+    gizmos.line_2d(Vec2::new(-half_w, -half_h), Vec2::new(half_w, -half_h), color);
     gizmos.line_2d(Vec2::new(half_w, -half_h), Vec2::new(half_w, half_h), color);
     gizmos.line_2d(Vec2::new(half_w, half_h), Vec2::new(-half_w, half_h), color);
-    gizmos.line_2d(
-        Vec2::new(-half_w, half_h),
-        Vec2::new(-half_w, -half_h),
-        color,
-    );
+    gizmos.line_2d(Vec2::new(-half_w, half_h), Vec2::new(-half_w, -half_h), color);
 }
 
 /// Hide/show angle-power UI based on game state.
 pub fn update_ui_visibility(
     turn: Res<TurnState>,
+    menu: Res<MenuOpen>,
     mut angle_power: Query<
         &mut Visibility,
         (
@@ -69,19 +60,19 @@ pub fn update_ui_visibility(
     >,
 ) {
     for mut vis in angle_power.iter_mut() {
-        if turn.firing || turn.round_over {
-            *vis = Visibility::Hidden;
+        *vis = if turn.firing || turn.round_over || menu.open {
+            Visibility::Hidden
         } else {
-            *vis = Visibility::Visible;
-        }
+            Visibility::Visible
+        };
     }
 
     for mut vis in missile_status.iter_mut() {
-        if turn.firing {
-            *vis = Visibility::Visible;
+        *vis = if turn.firing && !menu.open {
+            Visibility::Visible
         } else {
-            *vis = Visibility::Hidden;
-        }
+            Visibility::Hidden
+        };
     }
 }
 
@@ -92,7 +83,6 @@ pub fn update_planet_visibility(
     mut planets: Query<(&mut Sprite, &Planet)>,
 ) {
     if !settings.invisible {
-        // Normal mode: only reset colors when settings change (avoids change-detection churn)
         if settings.is_changed() {
             for (mut sprite, _) in planets.iter_mut() {
                 sprite.color = Color::WHITE;
@@ -103,23 +93,19 @@ pub fn update_planet_visibility(
 
     if turn.round_over {
         if turn.show_planets > 0.0 {
-            // Fade in: alpha goes from 0 to 255 as show_planets counts down from 100 to 0
             let alpha = (255.0 - turn.show_planets * 2.55) / 255.0;
             for (mut sprite, planet) in planets.iter_mut() {
                 if !planet.is_blackhole {
                     sprite.color = Color::srgba(1.0, 1.0, 1.0, alpha.clamp(0.0, 1.0) as f32);
                 }
             }
-            // Python decrements by 1 per frame at 30fps; we run in Update at ~60fps
             turn.show_planets -= 0.5;
         } else {
-            // Fully visible after fade completes
             for (mut sprite, _) in planets.iter_mut() {
                 sprite.color = Color::WHITE;
             }
         }
     } else {
-        // Playing: hide planets
         for (mut sprite, _) in planets.iter_mut() {
             sprite.color = Color::srgba(1.0, 1.0, 1.0, 0.0);
         }
@@ -127,69 +113,67 @@ pub fn update_planet_visibility(
 }
 
 /// Draw a zoom/minimap view when the missile is off-screen during firing.
-/// Shows a dim overlay with a scaled-down view of the game area and missile position.
+/// A full-screen dim sprite (ZoomDimSprite) is toggled, and gizmos draw the overlay borders.
 pub fn draw_zoom_view(
     mut gizmos: Gizmos,
     turn: Res<TurnState>,
     missile_q: Query<(&GravityBody, &MissileMarker)>,
-    players: Query<(&Player, &Transform)>,
+    players: Query<(&Player, &Transform), Without<ShipBlendSprite>>,
+    mut dim_q: Query<&mut Visibility, With<ZoomDimSprite>>,
 ) {
-    if !turn.firing {
-        return;
-    }
-
     let mut missile_pos = None;
     let mut missile_on_screen = true;
-    for (body, marker) in missile_q.iter() {
-        if !marker.active {
-            continue;
+    if turn.firing {
+        for (body, marker) in missile_q.iter() {
+            if !marker.active {
+                continue;
+            }
+            missile_on_screen = is_on_screen(body.pos);
+            missile_pos = Some(body.pos);
         }
-        missile_on_screen = is_on_screen(body.pos);
-        missile_pos = Some(body.pos);
     }
 
-    // Only show zoom when missile is off-screen
-    if missile_on_screen || missile_pos.is_none() {
+    let show_zoom = turn.firing && !missile_on_screen && missile_pos.is_some();
+
+    for mut vis in dim_q.iter_mut() {
+        *vis = if show_zoom { Visibility::Visible } else { Visibility::Hidden };
+    }
+
+    if !show_zoom {
         return;
     }
     let mpos = missile_pos.unwrap();
 
-    // Zoom view: 600x450 centered at bevy (0,0), matching pygame (400,300) center
     let zoom_w = 600.0_f32;
     let zoom_h = 450.0_f32;
-
-    // Draw dim background (full screen darkening via large rect)
-    // We can't easily do a filled rect with gizmos, so skip the dim for now
-
-    // White border around zoom area
-    let half_w = zoom_w / 2.0;
-    let half_h = zoom_h / 2.0;
-    let white = Color::WHITE;
-    gizmos.line_2d(Vec2::new(-half_w, half_h),  Vec2::new(half_w, half_h),  white);
-    gizmos.line_2d(Vec2::new(half_w,  half_h),  Vec2::new(half_w, -half_h), white);
-    gizmos.line_2d(Vec2::new(half_w,  -half_h), Vec2::new(-half_w, -half_h), white);
-    gizmos.line_2d(Vec2::new(-half_w, -half_h), Vec2::new(-half_w, half_h), white);
-
-    // Grey border around the 1/4 scale game area (200x150 centered in zoom)
     let game_w = 200.0_f32;
     let game_h = 150.0_f32;
-    let g_half_w = game_w / 2.0;
-    let g_half_h = game_h / 2.0;
-    let grey = Color::srgb(150.0 / 255.0, 150.0 / 255.0, 150.0 / 255.0);
-    gizmos.line_2d(Vec2::new(-g_half_w, g_half_h),  Vec2::new(g_half_w, g_half_h),  grey);
-    gizmos.line_2d(Vec2::new(g_half_w,  g_half_h),  Vec2::new(g_half_w, -g_half_h), grey);
-    gizmos.line_2d(Vec2::new(g_half_w,  -g_half_h), Vec2::new(-g_half_w, -g_half_h), grey);
-    gizmos.line_2d(Vec2::new(-g_half_w, -g_half_h), Vec2::new(-g_half_w, g_half_h), grey);
 
-    // Draw missile position as a dot at 1/4 scale
-    // Pygame pos (0-800, 0-600) → scaled to (-100..100, -75..75) in the game area box
+    // White outer border
+    let hw = zoom_w / 2.0;
+    let hh = zoom_h / 2.0;
+    let white = Color::WHITE;
+    gizmos.line_2d(Vec2::new(-hw, hh), Vec2::new(hw, hh), white);
+    gizmos.line_2d(Vec2::new(hw, hh), Vec2::new(hw, -hh), white);
+    gizmos.line_2d(Vec2::new(hw, -hh), Vec2::new(-hw, -hh), white);
+    gizmos.line_2d(Vec2::new(-hw, -hh), Vec2::new(-hw, hh), white);
+
+    // Grey inner border (1/4 scale game viewport)
+    let ghw = game_w / 2.0;
+    let ghh = game_h / 2.0;
+    let grey = Color::srgb(150.0 / 255.0, 150.0 / 255.0, 150.0 / 255.0);
+    gizmos.line_2d(Vec2::new(-ghw, ghh), Vec2::new(ghw, ghh), grey);
+    gizmos.line_2d(Vec2::new(ghw, ghh), Vec2::new(ghw, -ghh), grey);
+    gizmos.line_2d(Vec2::new(ghw, -ghh), Vec2::new(-ghw, -ghh), grey);
+    gizmos.line_2d(Vec2::new(-ghw, -ghh), Vec2::new(-ghw, ghh), grey);
+
+    // Missile dot
     let mx = (mpos.0 as f32 / 800.0 - 0.5) * game_w;
     let my = (0.5 - mpos.1 as f32 / 600.0) * game_h;
     gizmos.circle_2d(Vec2::new(mx, my), 3.0, Color::srgb(1.0, 0.3, 0.3));
 
-    // Draw player positions as small dots
+    // Player dots
     for (player, transform) in players.iter() {
-        // Convert bevy transform back to scaled minimap coords
         let px = (transform.translation.x / 800.0) * game_w;
         let py = (transform.translation.y / 600.0) * game_h;
         gizmos.circle_2d(Vec2::new(px, py), 2.0, player.color());
@@ -217,19 +201,15 @@ pub fn update_round_overlay(
 
             for &child in children {
                 if let Ok((mut text, mut font, mut color)) = text_q.get_mut(child) {
-                    // Update text content
                     if turn.game_over {
                         **text = "Game Over".to_string();
                     } else {
                         **text = format!("Round {}", turn.round);
                     }
 
-                    // Alpha: 2*show_round - 60, clamped to 0-255
                     let alpha = ((2.0 * turn.show_round - 60.0) / 255.0).clamp(0.0, 1.0);
                     color.0 = Color::srgba(1.0, 1.0, 1.0, alpha as f32);
 
-                    // Font size scales up as show_round decreases (zoom in effect)
-                    // Python: s = (100 - show_round) * rect.h / 25 (for round text)
                     let scale_factor = if turn.game_over { 15.0 } else { 25.0 };
                     let size = ((100.0 - turn.show_round) * 48.0 / scale_factor).max(4.0);
                     font.font_size = size as f32;
@@ -240,9 +220,7 @@ pub fn update_round_overlay(
         }
     }
 
-    // Decay once per frame, outside the container loop
     if show {
-        // Python runs at 30fps, Bevy Update at ~60fps, so use sqrt(1.04) ≈ 1.02
         turn.show_round /= 1.02;
     }
 }
@@ -271,7 +249,7 @@ pub fn update_round_over_display(
             Without<UiMissileStatus>,
         ),
     >,
-    players: Query<&Player>,
+    players: Query<&Player, Without<ShipBlendSprite>>,
 ) {
     let show_msg = turn.round_over && turn.show_round <= 30.0 && turn.show_planets <= 0.0;
 
@@ -304,17 +282,13 @@ pub fn update_round_over_display(
             lines.push(String::new());
             lines.push(format!("{} added to score", round_result.total_score));
 
-            // Game over info
             if turn.game_over {
                 lines.push(String::new());
                 let mut p1_score = 0;
                 let mut p2_score = 0;
                 for player in players.iter() {
-                    if player.id == 1 {
-                        p1_score = player.score;
-                    } else {
-                        p2_score = player.score;
-                    }
+                    if player.id == 1 { p1_score = player.score; }
+                    else { p2_score = player.score; }
                 }
                 if p1_score > p2_score {
                     lines.push("Player 1 has won the game".to_string());
@@ -326,13 +300,79 @@ pub fn update_round_over_display(
             }
 
             lines.push(String::new());
-            if turn.game_over {
-                lines.push("Press fire for a new game".to_string());
+            lines.push(if turn.game_over {
+                "Press fire for a new game".to_string()
             } else {
-                lines.push("Press fire for a new round".to_string());
-            }
+                "Press fire for a new round".to_string()
+            });
 
             **text = lines.join("\n");
         }
     }
+}
+
+/// Show the settings menu overlay and update its text content each frame.
+pub fn update_menu_display(
+    settings: Res<GameSettings>,
+    menu: Res<MenuOpen>,
+    mut vis_q: Query<&mut Visibility, With<UiMenuOverlay>>,
+    mut text_q: Query<&mut Text, With<UiMenuOverlay>>,
+) {
+    for mut vis in vis_q.iter_mut() {
+        *vis = if menu.open { Visibility::Visible } else { Visibility::Hidden };
+    }
+
+    if !menu.open {
+        return;
+    }
+
+    // Display rows: (label, value_string). Empty label = separator line.
+    let rows: &[(&str, Option<String>)] = &[
+        ("Resume Game", None),
+        ("New Game", None),
+        ("", None),
+        ("Bounce", Some(bool_str(settings.bounce))),
+        ("Fixed Power", Some(bool_str(settings.fixed_power))),
+        ("Invisible Planets", Some(bool_str(settings.invisible))),
+        ("Particles", Some(bool_str(settings.particles_enabled))),
+        ("", None),
+        ("Max Planets", Some(settings.max_planets.to_string())),
+        ("Max Blackholes", Some(settings.max_blackholes.to_string())),
+        ("Rounds", Some(if settings.max_rounds == 0 { "∞".into() } else { settings.max_rounds.to_string() })),
+        ("", None),
+        ("Fullscreen", Some(bool_str(settings.fullscreen))),
+    ];
+
+    // Map menu.selected index to display row index (skip separators)
+    let selectable: Vec<usize> = rows.iter().enumerate()
+        .filter(|(_, (label, _))| !label.is_empty())
+        .map(|(i, _)| i)
+        .collect();
+    let selected_row = selectable.get(menu.selected).copied().unwrap_or(0);
+
+    let mut lines = vec![
+        "  ── SETTINGS ──".to_string(),
+        String::new(),
+    ];
+    for (i, (label, value)) in rows.iter().enumerate() {
+        if label.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        let arrow = if i == selected_row { "►" } else { "  " };
+        match value {
+            None => lines.push(format!("{}  {}", arrow, label)),
+            Some(v) => lines.push(format!("{}  {:<22}{}", arrow, label, v)),
+        }
+    }
+    lines.push(String::new());
+    lines.push("  Up/Down: navigate   Enter/Left/Right: change   Esc: close".to_string());
+
+    for mut text in text_q.iter_mut() {
+        **text = lines.join("\n");
+    }
+}
+
+fn bool_str(v: bool) -> String {
+    if v { "ON".into() } else { "OFF".into() }
 }

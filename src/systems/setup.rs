@@ -121,6 +121,19 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
         },
     ));
 
+    // Blend layer sprite for player 1 (same position, slightly higher Z, different atlas frame)
+    commands.spawn((
+        Sprite::from_atlas_image(
+            assets.red_ship.clone(),
+            TextureAtlas {
+                layout: assets.ship_atlas_layout.clone(),
+                index: 0,
+            },
+        ),
+        Transform::from_xyz(p1_bevy.x, p1_bevy.y, 4.05),
+        crate::components::ShipBlendSprite { player_id: 1 },
+    ));
+
     let p2_bevy = pygame_to_bevy(760.0, y2);
 
     commands.spawn((
@@ -144,6 +157,33 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
             gun_offset: 23.0,
             explosion_frame: 0,
         },
+    ));
+
+    // Blend layer sprite for player 2
+    commands.spawn((
+        Sprite::from_atlas_image(
+            assets.blue_ship.clone(),
+            TextureAtlas {
+                layout: assets.ship_atlas_layout.clone(),
+                index: 0,
+            },
+        ),
+        Transform::from_xyz(p2_bevy.x, p2_bevy.y, 4.05),
+        crate::components::ShipBlendSprite { player_id: 2 },
+    ));
+}
+
+/// Spawn the full-screen dim sprite used behind the zoom minimap.
+pub fn setup_zoom_dim(mut commands: Commands) {
+    commands.spawn((
+        Sprite {
+            color: Color::srgba(0.0, 0.0, 0.0, 175.0 / 255.0),
+            custom_size: Some(Vec2::new(WINDOW_WIDTH, WINDOW_HEIGHT)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, 18.0),
+        Visibility::Hidden,
+        crate::components::ZoomDimSprite,
     ));
 }
 
@@ -293,6 +333,45 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
                 TextColor(Color::WHITE),
             ));
         });
+
+    // Settings menu overlay (full-screen, hidden by default)
+    commands.spawn((
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(0.0),
+            left: Val::Px(0.0),
+            right: Val::Px(0.0),
+            bottom: Val::Px(0.0),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        Visibility::Hidden,
+        ZIndex(20),
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+        crate::components::UiMenuOverlay,
+    )).with_children(|parent| {
+        parent.spawn((
+            Node {
+                padding: UiRect::axes(Val::Px(50.0), Val::Px(30.0)),
+                border: UiRect::all(Val::Px(1.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.1, 0.95)),
+            BorderColor::all(Color::srgb(0.0, 0.0, 0.8)),
+        )).with_children(|box_parent| {
+            box_parent.spawn((
+                Text::new(""),
+                TextFont {
+                    font: assets.font.clone(),
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                crate::components::UiMenuOverlay,
+            ));
+        });
+    });
 
     // End round message container (centered box with dark background)
     commands

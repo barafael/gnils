@@ -35,6 +35,7 @@ fn main() {
         .insert_resource(ParticleSpawnQueue::default())
         .insert_resource(MissileImpactQueue::default())
         .insert_resource(RoundResult::default())
+        .insert_resource(MenuOpen::default())
         // Startup systems (run once)
         .add_systems(
             Startup,
@@ -48,6 +49,7 @@ fn main() {
                 systems::setup::setup_background,
                 systems::setup::setup_players,
                 systems::setup::setup_missile,
+                systems::setup::setup_zoom_dim,
                 systems::setup::setup_ui,
             )
                 .after(systems::setup::load_assets),
@@ -98,7 +100,6 @@ fn main() {
                 .run_if(not(in_state(GamePhase::Loading))),
         )
         // Particle physics during non-Firing states (Aiming, RoundOver)
-        // During Firing, particles are handled in the firing chain above
         .add_systems(
             FixedUpdate,
             (
@@ -113,6 +114,15 @@ fn main() {
         .add_systems(
             Update,
             systems::input::round_over_input.run_if(in_state(GamePhase::RoundOver)),
+        )
+        // Menu input runs in any active state
+        .add_systems(
+            Update,
+            (
+                systems::input::menu_toggle_input,
+                systems::input::menu_nav_input,
+            )
+                .run_if(not(in_state(GamePhase::Loading))),
         )
         // Loading → RoundSetup transition
         .add_systems(
@@ -142,12 +152,12 @@ fn main() {
                 systems::rendering::update_round_overlay,
                 systems::rendering::update_round_over_display,
                 systems::rendering::update_planet_visibility,
+                systems::rendering::update_menu_display,
             ),
         )
         .run();
 }
 
-/// System that transitions from Loading to RoundSetup once GameAssets exists.
 fn loading_transition_system(
     assets: Option<Res<GameAssets>>,
     trail: Option<Res<TrailCanvas>>,
@@ -158,7 +168,6 @@ fn loading_transition_system(
     }
 }
 
-/// System that transitions from Aiming to Firing when the turn state indicates firing.
 fn fire_transition_system(turn: Res<TurnState>, mut next_state: ResMut<NextState<GamePhase>>) {
     if turn.firing {
         info!("Transitioning Aiming → Firing");
@@ -166,7 +175,6 @@ fn fire_transition_system(turn: Res<TurnState>, mut next_state: ResMut<NextState
     }
 }
 
-/// System that transitions from Firing back to Aiming or RoundOver when firing ends.
 fn firing_done_system(
     turn: Res<TurnState>,
     missile_q: Query<&MissileMarker>,
@@ -175,12 +183,10 @@ fn firing_done_system(
 ) {
     let missile_active = missile_q.iter().any(|m| m.active);
 
-    // Don't transition if there are pending impacts — let handle_missile_impact process them first
     if !impact_queue.impacts.is_empty() {
         return;
     }
 
-    // Only transition when missile is no longer active AND firing flag is cleared
     if !turn.firing && !missile_active {
         if turn.round_over {
             info!("Transitioning Firing → RoundOver");
