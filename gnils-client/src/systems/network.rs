@@ -317,6 +317,14 @@ fn apply_round_result(
     players: &mut Query<(&mut Player, &mut Transform), Without<ShipBlendSprite>>,
     round_result: &mut RoundResult,
 ) {
+    // Capture old shooter score before overwriting so we can compute the delta for display.
+    let score_delta = if let HitResult::Ship { shooter, .. } = hit {
+        let old = players.iter().find(|(p, _)| p.id == *shooter).map(|(p, _)| p.score).unwrap_or(0);
+        scores[(*shooter - 1) as usize] - old
+    } else {
+        0
+    };
+
     // Apply scores from server
     for (mut player, _) in players.iter_mut() {
         player.score = scores[(player.id - 1) as usize];
@@ -338,17 +346,16 @@ fn apply_round_result(
             message: "Absorbed by blackhole".to_string(),
         },
         HitResult::Ship { hit_player, shooter, self_hit } => {
-            let score_change = scores[(*shooter - 1) as usize];
             if *self_hit {
                 RoundResult {
                     hit_player: *hit_player, shooter: *shooter, self_hit: true,
-                    hit_score: -2000, quick_bonus: 0, power_penalty: 0, total_score: -2000,
+                    hit_score: -SELF_HIT, quick_bonus: 0, power_penalty: 0, total_score: -SELF_HIT,
                     message: format!("Player {} hit themselves!", shooter),
                 }
             } else {
                 RoundResult {
                     hit_player: *hit_player, shooter: *shooter, self_hit: false,
-                    hit_score: 1500, quick_bonus: 0, power_penalty: 0, total_score: score_change,
+                    hit_score: HIT_SCORE, quick_bonus: 0, power_penalty: 0, total_score: score_delta,
                     message: format!("Player {} hits Player {}!", shooter, hit_player),
                 }
             }

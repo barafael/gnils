@@ -310,10 +310,9 @@ fn tick_simulation(
 
     if let Some(col) = check_collisions(&state.missile, &planets, &player_y, active_player, &settings.0) {
         state.missile.active = false;
-        let flight = state.missile.flight;
         let player_attempts = state.player_attempts;
         let last_power = state.last_power;
-        let (hit, delta) = resolve_hit(&col, active_player, flight, last_power, &player_attempts);
+        let (hit, delta) = resolve_hit(&col, active_player, last_power, &player_attempts);
         apply_scores(&mut state.scores, active_player, &hit, delta);
         let scores = state.scores;
         let round = state.round;
@@ -386,7 +385,7 @@ fn check_collisions(m: &BodySnapshot, planets: &[PlanetData], py: &[f64; 2], act
 
 // apply_bounce is provided by gnils_protocol::apply_bounce (imported via use gnils_protocol::*)
 
-fn resolve_hit(col: &ColInfo, active: u8, _flight: i32, power: f64, player_attempts: &[u32; 2]) -> (HitResult, i32) {
+fn resolve_hit(col: &ColInfo, active: u8, power: f64, player_attempts: &[u32; 2]) -> (HitResult, i32) {
     match &col.kind {
         ColKind::Planet | ColKind::Miss => (HitResult::Planet, 0),
         ColKind::Blackhole              => (HitResult::Blackhole, 0),

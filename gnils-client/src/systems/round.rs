@@ -35,9 +35,19 @@ pub fn handle_missile_impact(
                 end_shot(&mut turn);
             }
             HitType::Ship(hit_id) => {
+                let last = turn.last_player;
+                let killed_self = last == hit_id;
+                let power_penalty = missile_q
+                    .iter()
+                    .next()
+                    .map(|m| m.power_penalty)
+                    .unwrap_or(0);
+
+                let mut victim_attempts = 0u32;
                 for mut player in players.iter_mut() {
                     if player.id == hit_id {
                         player.shot = true;
+                        victim_attempts = player.attempts;
                     }
                 }
 
@@ -48,19 +58,6 @@ pub fn handle_missile_impact(
                         size: 10,
                     });
                 }
-
-                let last = turn.last_player;
-                let killed_self = last == hit_id;
-                let power_penalty = missile_q
-                    .iter()
-                    .next()
-                    .map(|m| m.power_penalty)
-                    .unwrap_or(0);
-
-                let victim_attempts = players.iter()
-                    .find(|p| p.id == hit_id)
-                    .map(|p| p.attempts)
-                    .unwrap_or(0);
                 let (total_delta, quick_bonus, pen) =
                     compute_shot_score(killed_self, power_penalty, victim_attempts);
 
@@ -120,7 +117,7 @@ pub fn round_setup(
     // Randomize player Y positions each round
     for (player, mut transform) in players.iter_mut() {
         let y = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
-        let x = if player.id == 1 { -360.0 } else { 360.0 };
+        let x = if player.id == 1 { PLAYER1_X } else { PLAYER2_X };
         transform.translation.x = x as f32;
         transform.translation.y = y as f32;
     }
