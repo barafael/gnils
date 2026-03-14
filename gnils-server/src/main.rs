@@ -382,21 +382,7 @@ fn check_collisions(m: &BodySnapshot, planets: &[PlanetData], py: &[f64; 2], act
     None
 }
 
-fn apply_bounce(m: &mut BodySnapshot) {
-    macro_rules! bounce_axis {
-        ($pos:expr, $other:expr, $last_pos:expr, $last_other:expr, $vel:expr, $limit:expr, $sign:expr) => {
-            if $sign * ($pos - $limit) > 0.0 {
-                let d = $sign * ($pos - $last_pos);
-                if d.abs() > 1e-10 { $other = $last_other + ($other-$last_other)*$sign*($limit-$last_pos)/d; }
-                $pos = $limit; $vel = -$vel;
-            }
-        }
-    }
-    bounce_axis!(m.pos.0, m.pos.1, m.last_pos.0, m.last_pos.1, m.vel.0,  WORLD_HALF_W,  1.0);
-    bounce_axis!(m.pos.0, m.pos.1, m.last_pos.0, m.last_pos.1, m.vel.0, -WORLD_HALF_W, -1.0);
-    bounce_axis!(m.pos.1, m.pos.0, m.last_pos.1, m.last_pos.0, m.vel.1,  WORLD_HALF_H,  1.0);
-    bounce_axis!(m.pos.1, m.pos.0, m.last_pos.1, m.last_pos.0, m.vel.1, -WORLD_HALF_H, -1.0);
-}
+// apply_bounce is provided by gnils_protocol::apply_bounce (imported via use gnils_protocol::*)
 
 fn resolve_hit(col: &ColInfo, active: u8, s: &GameSettingsData, flight: i32, player_attempts: &[u32; 2]) -> (HitResult, i32) {
     match &col.kind {

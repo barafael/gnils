@@ -106,42 +106,43 @@ pub fn missile_collision(
             }
         }
 
-        // Bounce mode
+        // Bounce mode — same algorithm as gnils_protocol::apply_bounce but operating on
+        // GravityBody (which uses .velocity instead of .vel, so we can't call it directly).
         if settings.bounce {
-            if body.pos.0 > 400.0 {
+            if body.pos.0 > WORLD_HALF_W {
                 let d = body.pos.0 - body.last_pos.0;
                 if d.abs() > 1e-10 {
                     body.pos.1 = body.last_pos.1
-                        + (body.pos.1 - body.last_pos.1) * (400.0 - body.last_pos.0) / d;
+                        + (body.pos.1 - body.last_pos.1) * (WORLD_HALF_W - body.last_pos.0) / d;
                 }
-                body.pos.0 = 400.0;
+                body.pos.0 = WORLD_HALF_W;
                 body.velocity.0 = -body.velocity.0;
             }
-            if body.pos.0 < -400.0 {
+            if body.pos.0 < -WORLD_HALF_W {
                 let d = body.last_pos.0 - body.pos.0;
                 if d.abs() > 1e-10 {
                     body.pos.1 = body.last_pos.1
-                        + (body.pos.1 - body.last_pos.1) * (body.last_pos.0 + 400.0) / d;
+                        + (body.pos.1 - body.last_pos.1) * (body.last_pos.0 + WORLD_HALF_W) / d;
                 }
-                body.pos.0 = -400.0;
+                body.pos.0 = -WORLD_HALF_W;
                 body.velocity.0 = -body.velocity.0;
             }
-            if body.pos.1 > 300.0 {
+            if body.pos.1 > WORLD_HALF_H {
                 let d = body.pos.1 - body.last_pos.1;
                 if d.abs() > 1e-10 {
                     body.pos.0 = body.last_pos.0
-                        + (body.pos.0 - body.last_pos.0) * (300.0 - body.last_pos.1) / d;
+                        + (body.pos.0 - body.last_pos.0) * (WORLD_HALF_H - body.last_pos.1) / d;
                 }
-                body.pos.1 = 300.0;
+                body.pos.1 = WORLD_HALF_H;
                 body.velocity.1 = -body.velocity.1;
             }
-            if body.pos.1 < -300.0 {
+            if body.pos.1 < -WORLD_HALF_H {
                 let d = body.last_pos.1 - body.pos.1;
                 if d.abs() > 1e-10 {
                     body.pos.0 = body.last_pos.0
-                        + (body.pos.0 - body.last_pos.0) * (body.last_pos.1 + 300.0) / d;
+                        + (body.pos.0 - body.last_pos.0) * (body.last_pos.1 + WORLD_HALF_H) / d;
                 }
-                body.pos.1 = -300.0;
+                body.pos.1 = -WORLD_HALF_H;
                 body.velocity.1 = -body.velocity.1;
             }
         }

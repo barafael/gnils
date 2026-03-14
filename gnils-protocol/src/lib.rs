@@ -210,6 +210,51 @@ pub fn is_in_extended_range(pos: (f64, f64)) -> bool {
         && pos.1 >= -3.0 * WORLD_HALF_H && pos.1 <= 3.0 * WORLD_HALF_H
 }
 
+/// Reflect a missile off the screen boundaries in-place, interpolating the
+/// perpendicular axis to the exact wall-crossing point.
+pub fn apply_bounce(m: &mut BodySnapshot) {
+    // Right wall
+    if m.pos.0 > WORLD_HALF_W {
+        let d = m.pos.0 - m.last_pos.0;
+        if d.abs() > 1e-10 {
+            m.pos.1 = m.last_pos.1
+                + (m.pos.1 - m.last_pos.1) * (WORLD_HALF_W - m.last_pos.0) / d;
+        }
+        m.pos.0 = WORLD_HALF_W;
+        m.vel.0 = -m.vel.0;
+    }
+    // Left wall
+    if m.pos.0 < -WORLD_HALF_W {
+        let d = m.last_pos.0 - m.pos.0;
+        if d.abs() > 1e-10 {
+            m.pos.1 = m.last_pos.1
+                + (m.pos.1 - m.last_pos.1) * (m.last_pos.0 + WORLD_HALF_W) / d;
+        }
+        m.pos.0 = -WORLD_HALF_W;
+        m.vel.0 = -m.vel.0;
+    }
+    // Top wall
+    if m.pos.1 > WORLD_HALF_H {
+        let d = m.pos.1 - m.last_pos.1;
+        if d.abs() > 1e-10 {
+            m.pos.0 = m.last_pos.0
+                + (m.pos.0 - m.last_pos.0) * (WORLD_HALF_H - m.last_pos.1) / d;
+        }
+        m.pos.1 = WORLD_HALF_H;
+        m.vel.1 = -m.vel.1;
+    }
+    // Bottom wall
+    if m.pos.1 < -WORLD_HALF_H {
+        let d = m.last_pos.1 - m.pos.1;
+        if d.abs() > 1e-10 {
+            m.pos.0 = m.last_pos.0
+                + (m.pos.0 - m.last_pos.0) * (m.last_pos.1 + WORLD_HALF_H) / d;
+        }
+        m.pos.1 = -WORLD_HALF_H;
+        m.vel.1 = -m.vel.1;
+    }
+}
+
 /// Advance one physics tick: apply gravity from all planets, then move the body.
 /// Mutates `pos`, `vel`, `last_pos`, and `flight` in-place.
 pub fn step_gravity(
