@@ -262,7 +262,7 @@ fn tick_round_setup(
 fn launch_missile(state: &mut RoundState, angle: f64, power: f64, settings: &GameSettingsData) {
     let idx = (state.active_player - 1) as usize;
     let x = if state.active_player == 1 { 40.0 } else { 760.0 };
-    let gun = if state.active_player == 1 { 22.0 } else { 23.0 };
+    let gun = if state.active_player == 1 { GUN_OFFSET_P1 } else { GUN_OFFSET_P2 };
     let rad = angle.to_radians();
     state.missile = BodySnapshot {
         pos: (x + gun * rad.sin(), state.player_y[idx] - gun * rad.cos()),

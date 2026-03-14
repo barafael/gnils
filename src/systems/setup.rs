@@ -2,6 +2,8 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
+use gnils_protocol::{GUN_OFFSET_P1, GUN_OFFSET_P2};
+
 use crate::components::*;
 use crate::constants::*;
 use crate::resources::*;
@@ -116,7 +118,7 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
             attempts: 0,
             shot: false,
             color_rgb: PLAYER1_COLOR,
-            gun_offset: 22.0,
+            gun_offset: GUN_OFFSET_P1,
             explosion_frame: 0,
         },
     ));
@@ -154,7 +156,7 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
             attempts: 0,
             shot: false,
             color_rgb: PLAYER2_COLOR,
-            gun_offset: 23.0,
+            gun_offset: GUN_OFFSET_P2,
             explosion_frame: 0,
         },
     ));

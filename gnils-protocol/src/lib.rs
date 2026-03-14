@@ -7,6 +7,11 @@ pub const SERVER_PORT: u16 = 5888;
 pub const PROTOCOL_ID: u64 = 0x0000_676E_696C_73;
 pub const PRIVATE_KEY: [u8; 32] = [0u8; 32];
 
+/// Distance from ship center to gun barrel tip (pygame-space pixels).
+/// Derived from the original: rect.right - rect.centerx + 2/3 for a 40px-wide sprite.
+pub const GUN_OFFSET_P1: f64 = 22.0; // rect.right  - rect.centerx + 2 = 20 + 2
+pub const GUN_OFFSET_P2: f64 = 23.0; // rect.centerx - rect.left   + 3 = 20 + 3
+
 // ── Shared data types (no Bevy dependency) ─────────────────────────────────
 
 /// Planet data as sent over the network and used in pure physics.
