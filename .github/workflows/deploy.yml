@@ -60,12 +60,12 @@ jobs:
           curl -sL "https://github.com/trunk-rs/trunk/releases/download/${TRUNK_VERSION}/trunk-x86_64-unknown-linux-gnu.tar.gz" | tar xz -C /usr/local/bin
 
       - name: Build WASM
-        run: trunk build --release --public-url "/${{ github.event.repository.name }}/"
+        run: cd gnils-client && trunk build --release --public-url "/${{ github.event.repository.name }}/"
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: gnils-client/dist
 
   deploy:
     needs: [check, build]

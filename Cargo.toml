@@ -1,33 +1,8 @@
 [workspace]
-members = [".", "gnils-protocol", "gnils-server"]
+members = ["gnils-client", "gnils-protocol", "gnils-server"]
 resolver = "3"
 
-[package]
-name = "gnils"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-bevy = "0.18"
-rand = "0.8"
-gnils-protocol = { path = "gnils-protocol" }
-lightyear = { version = "0.26.4", features = [
-    "client",
-    "webtransport",
-    "netcode",
-    "replication",
-] }
-serde = { version = "1", features = ["derive"] }
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-lightyear = { version = "0.26.4", features = [
-    "webtransport_dangerous_configuration",
-] }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
-js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Window", "Location"] }
+default-members = ["gnils-client"]
 
 [profile.wasm-release]
 inherits = "release"
