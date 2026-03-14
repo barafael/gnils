@@ -332,6 +332,29 @@ pub fn circle_line_intersect(
     (p1.0 + alpha * dx, p1.1 + alpha * dy)
 }
 
+/// Compute the score delta for a ship hit.
+///
+/// `power_penalty` should be pre-computed as `-(PENALTY_FACTOR * power) as i32`.
+/// `victim_attempts` is the number of shots the victim has fired this round.
+///
+/// Returns `(total_delta, quick_bonus, power_penalty)`.
+pub fn compute_shot_score(
+    self_hit: bool,
+    power_penalty: i32,
+    victim_attempts: u32,
+) -> (i32, i32, i32) {
+    if self_hit {
+        return (-SELF_HIT, 0, 0);
+    }
+    let quick_bonus = match victim_attempts {
+        1 => QUICK_SCORE_1,
+        2 => QUICK_SCORE_2,
+        3 => QUICK_SCORE_3,
+        _ => 0,
+    };
+    (HIT_SCORE + power_penalty + quick_bonus, quick_bonus, power_penalty)
+}
+
 /// Generate a randomised planet layout for one round.
 /// Returns `Vec<PlanetData>` ready to be used for physics and/or Bevy spawning.
 pub fn generate_planets(settings: &GameSettingsData, rng: &mut impl Rng) -> Vec<PlanetData> {

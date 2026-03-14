@@ -68,6 +68,8 @@ struct RoundState {
     /// Used to compute the quick-hit bonus: hitting the opponent on their 1st/2nd/3rd
     /// attempt awards 500/200/100 bonus points (matching the client).
     player_attempts: [u32; 2],
+    /// Power used for the current shot — needed to compute the power penalty.
+    last_power: f64,
 }
 
 // ── Plugin ────────────────────────────────────────────────────────────────────
@@ -267,6 +269,7 @@ fn tick_round_setup(
 fn launch_missile(state: &mut RoundState, angle: f64, power: f64, settings: &GameSettingsData) {
     let idx = (state.active_player - 1) as usize;
     state.player_attempts[idx] += 1;
+    state.last_power = power;
     let x = if state.active_player == 1 { PLAYER1_X } else { PLAYER2_X };
     let gun = if state.active_player == 1 { GUN_OFFSET_P1 } else { GUN_OFFSET_P2 };
     let launch_pos = compute_launch_point(x, state.player_y[idx], gun, angle);
@@ -309,7 +312,8 @@ fn tick_simulation(
         state.missile.active = false;
         let flight = state.missile.flight;
         let player_attempts = state.player_attempts;
-        let (hit, delta) = resolve_hit(&col, active_player, &settings.0, flight, &player_attempts);
+        let last_power = state.last_power;
+        let (hit, delta) = resolve_hit(&col, active_player, flight, last_power, &player_attempts);
         apply_scores(&mut state.scores, active_player, &hit, delta);
         let scores = state.scores;
         let round = state.round;
@@ -382,25 +386,16 @@ fn check_collisions(m: &BodySnapshot, planets: &[PlanetData], py: &[f64; 2], act
 
 // apply_bounce is provided by gnils_protocol::apply_bounce (imported via use gnils_protocol::*)
 
-fn resolve_hit(col: &ColInfo, active: u8, s: &GameSettingsData, flight: i32, player_attempts: &[u32; 2]) -> (HitResult, i32) {
+fn resolve_hit(col: &ColInfo, active: u8, _flight: i32, power: f64, player_attempts: &[u32; 2]) -> (HitResult, i32) {
     match &col.kind {
         ColKind::Planet | ColKind::Miss => (HitResult::Planet, 0),
         ColKind::Blackhole              => (HitResult::Blackhole, 0),
         ColKind::Ship(hit) => {
             let self_hit = *hit == active;
-            let penalty = -(s.max_flight - flight.max(0));
-            if self_hit {
-                (HitResult::Ship { hit_player: *hit, shooter: active, self_hit: true }, -SELF_HIT)
-            } else {
-                let victim_attempts = player_attempts[(*hit - 1) as usize];
-                let quick_bonus = match victim_attempts {
-                    1 => QUICK_SCORE_1,
-                    2 => QUICK_SCORE_2,
-                    3 => QUICK_SCORE_3,
-                    _ => 0,
-                };
-                (HitResult::Ship { hit_player: *hit, shooter: active, self_hit: false }, HIT_SCORE + penalty + quick_bonus)
-            }
+            let power_penalty = -(PENALTY_FACTOR * power) as i32;
+            let victim_attempts = player_attempts[(*hit - 1) as usize];
+            let (delta, _, _) = compute_shot_score(self_hit, power_penalty, victim_attempts);
+            (HitResult::Ship { hit_player: *hit, shooter: active, self_hit }, delta)
         }
     }
 }

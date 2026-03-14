@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use gnils_protocol::compute_shot_score;
 
 use crate::components::*;
 use crate::constants::*;
@@ -56,54 +57,32 @@ pub fn handle_missile_impact(
                     .map(|m| m.power_penalty)
                     .unwrap_or(0);
 
-                if killed_self {
-                    for mut player in players.iter_mut() {
-                        if player.id == hit_id {
-                            player.score -= SELF_HIT;
-                        }
-                    }
-                    *round_result = RoundResult {
-                        hit_player: hit_id,
-                        shooter: last,
-                        self_hit: true,
-                        hit_score: -(SELF_HIT),
-                        quick_bonus: 0,
-                        power_penalty: 0,
-                        total_score: -(SELF_HIT),
-                        message: format!("Player {} hit themselves!", last),
-                    };
-                } else {
-                    // Quickhit bonus: based on how many shots the VICTIM fired this round
-                    // (Python: self.players[victim].attempts)
-                    let mut bonus = 0;
-                    for player in players.iter() {
-                        if player.id == hit_id {
-                            bonus = match player.attempts {
-                                1 => QUICK_SCORE_1,
-                                2 => QUICK_SCORE_2,
-                                3 => QUICK_SCORE_3,
-                                _ => 0,
-                            };
-                        }
-                    }
+                let victim_attempts = players.iter()
+                    .find(|p| p.id == hit_id)
+                    .map(|p| p.attempts)
+                    .unwrap_or(0);
+                let (total_delta, quick_bonus, pen) =
+                    compute_shot_score(killed_self, power_penalty, victim_attempts);
 
-                    let score = power_penalty + bonus + HIT_SCORE;
-                    for mut player in players.iter_mut() {
-                        if player.id == last {
-                            player.score += score;
-                        }
+                for mut player in players.iter_mut() {
+                    if player.id == (if killed_self { hit_id } else { last }) {
+                        player.score += total_delta;
                     }
-                    *round_result = RoundResult {
-                        hit_player: hit_id,
-                        shooter: last,
-                        self_hit: false,
-                        hit_score: HIT_SCORE,
-                        quick_bonus: bonus,
-                        power_penalty,
-                        total_score: score,
-                        message: format!("Player {} hits Player {}!", last, hit_id),
-                    };
                 }
+                *round_result = RoundResult {
+                    hit_player: hit_id,
+                    shooter: last,
+                    self_hit: killed_self,
+                    hit_score: if killed_self { -SELF_HIT } else { HIT_SCORE },
+                    quick_bonus,
+                    power_penalty: pen,
+                    total_score: total_delta,
+                    message: if killed_self {
+                        format!("Player {} hit themselves!", last)
+                    } else {
+                        format!("Player {} hits Player {}!", last, hit_id)
+                    },
+                };
 
                 info!("Ship {} hit! Round over.", hit_id);
                 turn.round_over = true;
