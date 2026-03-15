@@ -201,9 +201,10 @@ pub fn receive_server_msgs(
                 let opponent_id = 3 - player_id;
                 for (mut player, _) in players.iter_mut() {
                     if player.id == opponent_id {
+                        let initial_angle = if player.id == 1 { 0.0 } else { std::f64::consts::PI };
                         player.angle = angle;
                         player.power = power;
-                        player.rel_rot = angle - 90.0;
+                        player.rel_rot = angle - initial_angle;
                     }
                 }
             }
