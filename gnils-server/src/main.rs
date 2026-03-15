@@ -392,8 +392,8 @@ fn resolve_hit(col: &ColInfo, active: u8, power: f64, player_attempts: &[u32; 2]
         ColKind::Ship(hit) => {
             let self_hit = *hit == active;
             let power_penalty = -(PENALTY_FACTOR * power) as i32;
-            let victim_attempts = player_attempts[(*hit - 1) as usize];
-            let (delta, _, _) = compute_shot_score(self_hit, power_penalty, victim_attempts);
+            let shooter_attempts = player_attempts[(active - 1) as usize];
+            let (delta, _, _) = compute_shot_score(self_hit, power_penalty, shooter_attempts);
             (HitResult::Ship { hit_player: *hit, shooter: active, self_hit }, delta)
         }
     }

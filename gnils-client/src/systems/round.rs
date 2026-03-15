@@ -43,11 +43,13 @@ pub fn handle_missile_impact(
                     .map(|m| m.power_penalty)
                     .unwrap_or(0);
 
-                let mut victim_attempts = 0u32;
+                let mut shooter_attempts = 0u32;
                 for mut player in players.iter_mut() {
                     if player.id == hit_id {
                         player.shot = true;
-                        victim_attempts = player.attempts;
+                    }
+                    if player.id == last {
+                        shooter_attempts = player.attempts;
                     }
                 }
 
@@ -59,7 +61,7 @@ pub fn handle_missile_impact(
                     });
                 }
                 let (total_delta, quick_bonus, pen) =
-                    compute_shot_score(killed_self, power_penalty, victim_attempts);
+                    compute_shot_score(killed_self, power_penalty, shooter_attempts);
 
                 for mut player in players.iter_mut() {
                     if player.id == (if killed_self { hit_id } else { last }) {
