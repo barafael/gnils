@@ -157,7 +157,7 @@ pub fn receive_server_msgs(
     mut net_mode: ResMut<NetworkMode>,
     mut settings: ResMut<GameSettings>,
     mut turn: ResMut<TurnState>,
-    mut players: Query<(&mut Player, &mut Transform), Without<ShipBlendSprite>>,
+    mut players: Query<(&mut Player, &mut Transform)>,
     mut missile_q: Query<(&mut GravityBody, &mut MissileMarker, &mut Visibility)>,
     mut spawn_queue: ResMut<ParticleSpawnQueue>,
     mut round_result: ResMut<RoundResult>,
@@ -281,7 +281,7 @@ fn handle_round_setup(
     planets: &[PlanetData],
     player_y: &[f64; 2],
     turn: &mut TurnState,
-    players: &mut Query<(&mut Player, &mut Transform), Without<ShipBlendSprite>>,
+    players: &mut Query<(&mut Player, &mut Transform)>,
     existing_planets: &Query<Entity, With<Planet>>,
     commands: &mut Commands,
     assets: &Option<Res<GameAssets>>,
@@ -296,12 +296,19 @@ fn handle_round_setup(
     let Some(ga) = assets else { return };
     spawn_planet_entities(commands, ga, &planets);
 
-    // Position players
-    for (player, mut transform) in players.iter_mut() {
+    // Position players and reset per-round state (matches Player.init() in the original)
+    for (mut player, mut transform) in players.iter_mut() {
         let y = player_y[(player.id - 1) as usize];
         let x = if player.id == 1 { PLAYER1_X } else { PLAYER2_X };
         transform.translation.x = x as f32;
         transform.translation.y = y as f32;
+
+        player.power = 100.0;
+        player.shot = false;
+        player.attempts = 0;
+        player.explosion_frame = 0;
+        player.rel_rot = 0.0;
+        player.angle = if player.id == 1 { 0.0 } else { std::f64::consts::PI };
     }
 
     // Update turn state
@@ -327,7 +334,7 @@ fn apply_round_result(
     scores: &[i32; 2],
     game_over: bool,
     turn: &mut TurnState,
-    players: &mut Query<(&mut Player, &mut Transform), Without<ShipBlendSprite>>,
+    players: &mut Query<(&mut Player, &mut Transform)>,
     round_result: &mut RoundResult,
 ) {
     // Capture old shooter score before overwriting so we can compute the delta for display.
@@ -382,7 +389,7 @@ fn apply_round_result(
 
 fn send_aim_update(
     net_mode: Res<NetworkMode>,
-    players: Query<&Player, Without<ShipBlendSprite>>,
+    players: Query<&Player>,
     turn: Res<TurnState>,
     mut senders: Query<&mut MessageSender<ClientMsg>>,
 ) {
