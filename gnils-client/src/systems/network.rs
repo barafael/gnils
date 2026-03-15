@@ -238,6 +238,18 @@ pub fn receive_server_msgs(
                 });
             }
 
+            ServerMsg::ShotMissed { next_player } => {
+                info!("ShotMissed: next player = P{next_player}");
+                turn.current_player = next_player;
+                turn.firing = false;
+                // Deactivate missile
+                for (mut _body, mut marker, mut vis) in missile_q.iter_mut() {
+                    marker.active = false;
+                    *vis = Visibility::Hidden;
+                }
+                next.set(GamePhase::Aiming);
+            }
+
             ServerMsg::RoundResult { hit, scores, game_over } => {
                 info!("RoundResult: {hit:?} scores={scores:?} game_over={game_over}");
                 apply_round_result(

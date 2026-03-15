@@ -186,7 +186,12 @@ pub enum ServerMsg {
         count: u32,
         size: u8,
     },
-    /// End of the current shot — includes scoring information.
+    /// The missile missed (hit a planet, blackhole, or timed out) — switch turns
+    /// within the same round, keeping the same planet layout.
+    ShotMissed {
+        next_player: u8,
+    },
+    /// End of the current round — a ship was hit.  Includes scoring information.
     RoundResult {
         hit: HitResult,
         scores: [i32; 2],

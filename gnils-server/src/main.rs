@@ -286,6 +286,7 @@ fn launch_missile(state: &mut RoundState, angle: f64, power: f64, settings: &Gam
 fn tick_simulation(
     mut state: ResMut<RoundState>,
     settings: Res<HostSettings>,
+    clients: Res<ConnectedClients>,
     mut senders: Query<(&RemoteId, &mut MessageSender<ServerMsg>)>,
     mut next: ResMut<NextState<ServerPhase>>,
 ) {
@@ -310,30 +311,61 @@ fn tick_simulation(
 
     if let Some(col) = check_collisions(&state.missile, &planets, &player_y, active_player, &settings.0) {
         state.missile.active = false;
-        let player_attempts = state.player_attempts;
-        let last_power = state.last_power;
-        let (hit, delta) = resolve_hit(&col, active_player, last_power, &player_attempts);
-        apply_scores(&mut state.scores, active_player, &hit, delta);
-        let scores = state.scores;
-        let round = state.round;
-        let game_over = check_game_over(round, &settings.0);
 
-        if settings.0.particles_enabled {
-            let pos = (col.pos.0 as f32, col.pos.1 as f32);
-            for (_, mut s) in senders.iter_mut() {
-                s.send::<Reliable>(ServerMsg::ParticleSpawn { pos, count: 30, size: 10 });
-            }
-        }
+        // Deactivate missile on all clients
         for (_, mut s) in senders.iter_mut() {
             s.send::<Unreliable>(ServerMsg::MissileUpdate {
                 snapshot: BodySnapshot { active: false, ..snap.clone() },
                 trail_color: trail,
             });
-            s.send::<Reliable>(ServerMsg::RoundResult { hit: hit.clone(), scores, game_over });
         }
 
-        state.round_over_timer = 0.0;
-        next.set(if game_over { ServerPhase::GameOver } else { ServerPhase::RoundOver });
+        match &col.kind {
+            ColKind::Ship(_) => {
+                // Ship hit → round over (with scoring)
+                let player_attempts = state.player_attempts;
+                let last_power = state.last_power;
+                let (hit, delta) = resolve_hit(&col, active_player, last_power, &player_attempts);
+                apply_scores(&mut state.scores, active_player, &hit, delta);
+                let scores = state.scores;
+                let round = state.round;
+                let game_over = check_game_over(round, &settings.0);
+
+                if settings.0.particles_enabled {
+                    let pos = (col.pos.0 as f32, col.pos.1 as f32);
+                    for (_, mut s) in senders.iter_mut() {
+                        s.send::<Reliable>(ServerMsg::ParticleSpawn { pos, count: 30, size: 10 });
+                    }
+                }
+                for (_, mut s) in senders.iter_mut() {
+                    s.send::<Reliable>(ServerMsg::RoundResult { hit: hit.clone(), scores, game_over });
+                }
+
+                state.round_over_timer = 0.0;
+                next.set(if game_over { ServerPhase::GameOver } else { ServerPhase::RoundOver });
+            }
+            _ => {
+                // Planet / blackhole / miss → switch turns within same round
+                if settings.0.particles_enabled {
+                    if matches!(&col.kind, ColKind::Planet) {
+                        let pos = (col.pos.0 as f32, col.pos.1 as f32);
+                        for (_, mut s) in senders.iter_mut() {
+                            s.send::<Reliable>(ServerMsg::ParticleSpawn { pos, count: 30, size: 10 });
+                        }
+                    }
+                }
+
+                let next_player = if active_player == 1 { 2 } else { 1 };
+                state.active_player = next_player;
+                state.active_peer = clients.peer_for_player(next_player);
+
+                for (_, mut s) in senders.iter_mut() {
+                    s.send::<Reliable>(ServerMsg::ShotMissed { next_player });
+                }
+
+                next.set(ServerPhase::WaitingForShot);
+            }
+        }
     }
 }
 
