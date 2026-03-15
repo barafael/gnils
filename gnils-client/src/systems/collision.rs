@@ -49,7 +49,7 @@ pub fn missile_collision(
             let d_sq = (body.pos.0 - px).powi(2) + (body.pos.1 - py).powi(2);
 
             if planet.is_blackhole {
-                if d_sq <= planet.mass * planet.mass {
+                if d_sq <= planet.mass {
                     let impact_pos = Vec2::new(px as f32, py as f32);
                     impact_queue.impacts.push(MissileImpact {
                         pos: impact_pos,
@@ -175,7 +175,7 @@ pub fn particle_collision(
             let d_sq = (body.pos.0 - px).powi(2) + (body.pos.1 - py).powi(2);
 
             if planet.is_blackhole {
-                if d_sq <= (planet.mass * planet.mass) {
+                if d_sq <= planet.mass {
                     hit_blackhole = true;
                     break;
                 }

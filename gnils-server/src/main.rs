@@ -360,7 +360,7 @@ fn check_collisions(m: &BodySnapshot, planets: &[PlanetData], py: &[f64; 2], act
     if !is_in_extended_range(m.pos)         { return Some(ColInfo { pos: m.pos, kind: ColKind::Miss }); }
     for p in planets {
         let d2 = (m.pos.0-p.pos.0).powi(2)+(m.pos.1-p.pos.1).powi(2);
-        if p.is_blackhole { if d2 <= p.mass*p.mass { return Some(ColInfo { pos: m.pos, kind: ColKind::Blackhole }); } }
+        if p.is_blackhole { if d2 <= p.mass { return Some(ColInfo { pos: m.pos, kind: ColKind::Blackhole }); } }
         else if d2 <= p.radius*p.radius {
             let ip = circle_line_intersect(p.pos, p.radius, m.last_pos, m.pos);
             return Some(ColInfo { pos: ip, kind: ColKind::Planet });
