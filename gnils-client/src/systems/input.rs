@@ -1,8 +1,6 @@
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, WindowMode};
-
-use gnils_protocol::ClientMsg;
-use lightyear::prelude::MessageSender;
+use bevy_matchbox::prelude::MatchboxSocket;
 
 use crate::components::*;
 use crate::constants::*;
@@ -12,10 +10,10 @@ use crate::systems::network::send_fire_shot;
 pub fn aiming_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut turn: ResMut<TurnState>,
-    mut players: Query<&mut Player, Without<ShipBlendSprite>>,
+    mut players: Query<&mut Player>,
     menu: Res<MenuOpen>,
     net_mode: Res<NetworkMode>,
-    mut senders: Query<&mut MessageSender<ClientMsg>>,
+    mut socket: Option<ResMut<MatchboxSocket>>,
 ) {
     if turn.round_over || turn.firing || menu.open {
         return;
@@ -40,7 +38,9 @@ pub fn aiming_input(
 
     // In network mode, only the active player (this client's ID) can control the ship
     if let Some(pid) = net_mode.player_id() {
-        if current != pid { return; }
+        if current != pid {
+            return;
+        }
     }
 
     for mut player in players.iter_mut() {
@@ -78,9 +78,9 @@ pub fn aiming_input(
         }
 
         if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) {
-            if net_mode.is_network() {
-                // Network mode: send the shot to server; server drives physics
-                send_fire_shot(player.angle, player.power, &mut senders);
+            if let (true, Some(s)) = (net_mode.is_network(), &mut socket) {
+                // Network mode: send the shot to peer
+                send_fire_shot(player.angle, player.power, s);
             }
             // Both modes: set firing flag to transition Aiming → Firing
             turn.firing = true;
@@ -91,7 +91,7 @@ pub fn aiming_input(
 pub fn round_over_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut turn: ResMut<TurnState>,
-    mut players: Query<&mut Player, Without<ShipBlendSprite>>,
+    mut players: Query<&mut Player>,
     mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
     trail_canvas: Res<TrailCanvas>,
     mut images: ResMut<Assets<Image>>,
@@ -102,7 +102,7 @@ pub fn round_over_input(
     if !turn.round_over || menu.open {
         return;
     }
-    // In network mode the server drives round transitions; Space/Enter does nothing here
+    // In network mode the host auto-advances; Space/Enter does nothing here
     if net_mode.is_network() {
         return;
     }
@@ -116,7 +116,7 @@ pub fn round_over_input(
             turn.game_over = false;
         }
 
-        // Pick who goes first (lower score)
+        // Pick who goes first (lower score; player 1 on ties)
         let mut p1_score = 0;
         let mut p2_score = 0;
         for player in players.iter() {
@@ -126,11 +126,7 @@ pub fn round_over_input(
                 p2_score = player.score;
             }
         }
-        if p1_score < p2_score {
-            turn.current_player = 1;
-        } else if p2_score < p1_score {
-            turn.current_player = 2;
-        }
+        turn.current_player = if p1_score <= p2_score { 1 } else { 2 };
 
         reset_for_new_round(
             &mut turn,
@@ -168,7 +164,7 @@ pub fn menu_nav_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut menu: ResMut<MenuOpen>,
     mut settings: ResMut<GameSettings>,
-    mut players: Query<&mut Player, Without<ShipBlendSprite>>,
+    mut players: Query<&mut Player>,
     mut turn: ResMut<TurnState>,
     mut next_state: ResMut<NextState<GamePhase>>,
     trail_canvas: Res<TrailCanvas>,
@@ -305,7 +301,7 @@ pub fn menu_nav_input(
 /// Shared reset for starting a fresh round: clear trail, reset player states, deactivate missile.
 fn reset_for_new_round(
     turn: &mut TurnState,
-    players: &mut Query<&mut Player, Without<ShipBlendSprite>>,
+    players: &mut Query<&mut Player>,
     missile_q: &mut Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
     trail_canvas: &TrailCanvas,
     images: &mut Assets<Image>,
@@ -317,6 +313,7 @@ fn reset_for_new_round(
     turn.round_over = false;
     turn.firing = false;
     turn.show_round = 100.0;
+    turn.round_over_timer = 0.0;
 
     for mut player in players.iter_mut() {
         player.power = 100.0;
@@ -325,7 +322,11 @@ fn reset_for_new_round(
         player.explosion_frame = 0;
         player.rel_rot = 0.0;
         // angle: radians CCW from east (P1 faces east = 0, P2 faces west = π)
-        player.angle = if player.id == 1 { 0.0 } else { std::f64::consts::PI };
+        player.angle = if player.id == 1 {
+            0.0
+        } else {
+            std::f64::consts::PI
+        };
     }
 
     for (mut marker, mut vis) in missile_q.iter_mut() {
