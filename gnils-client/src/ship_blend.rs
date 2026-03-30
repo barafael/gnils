@@ -15,7 +15,7 @@ pub fn compute_blend_frames(rel_rot: f64) -> (usize, usize, f64) {
     let mut img2 = ((img2 % 8) + 8) as usize % 8;
 
     let f;
-    if img1 == img2 || img1 == (8 - img2) % 8 {
+    if img1 == img2 {
         img2 = (img2 + 1) % 8;
         f = (rel_rot - img1 as f64 * 45.0) / 45.0;
     } else {
@@ -63,7 +63,7 @@ pub fn blend_frames(frame1: &Image, frame2: &Image, factor: f64) -> Image {
     let fw = SHIP_FRAME_WIDTH as usize;
     let fh = SHIP_FRAME_HEIGHT as usize;
     let bpp = 4;
-    let alpha_overlay = (255.0 * factor).round() as u16;
+    let alpha_overlay = (255.0 * factor).round() as u32;
 
     let mut data = vec![0u8; fw * fh * bpp];
 
@@ -72,10 +72,10 @@ pub fn blend_frames(frame1: &Image, frame2: &Image, factor: f64) -> Image {
 
     for i in 0..(fw * fh) {
         let idx = i * bpp;
-        let r2 = f2_data[idx] as u16;
-        let g2 = f2_data[idx + 1] as u16;
-        let b2 = f2_data[idx + 2] as u16;
-        let a2 = f2_data[idx + 3] as u16;
+        let r2 = f2_data[idx] as u32;
+        let g2 = f2_data[idx + 1] as u32;
+        let b2 = f2_data[idx + 2] as u32;
+        let a2 = f2_data[idx + 3] as u32;
 
         let is_black = r2 == 0 && g2 == 0 && b2 == 0;
         let effective_a2 = if is_black {
@@ -84,10 +84,10 @@ pub fn blend_frames(frame1: &Image, frame2: &Image, factor: f64) -> Image {
             (a2 * alpha_overlay) / 255
         };
 
-        let r1 = f1_data[idx] as u16;
-        let g1 = f1_data[idx + 1] as u16;
-        let b1 = f1_data[idx + 2] as u16;
-        let a1 = f1_data[idx + 3] as u16;
+        let r1 = f1_data[idx] as u32;
+        let g1 = f1_data[idx + 1] as u32;
+        let b1 = f1_data[idx + 2] as u32;
+        let a1 = f1_data[idx + 3] as u32;
 
         let out_a = effective_a2 + a1 * (255 - effective_a2) / 255;
         if out_a > 0 {
