@@ -1,11 +1,9 @@
 // Re-export shared constants/helpers from gnils-protocol that are used
 // directly in client source files.
 pub use gnils_protocol::{
-    WORLD_HALF_W, WORLD_HALF_H,
-    PLAYER1_X, PLAYER2_X, PLAYER1_COLOR, PLAYER2_COLOR,
-    PLAYER_Y_MIN, PLAYER_Y_MAX,
-    MAX_FLIGHT, HIT_SCORE, SELF_HIT, PENALTY_FACTOR,
-    is_on_screen, is_in_extended_range,
+    HIT_SCORE, MAX_FLIGHT, PENALTY_FACTOR, PLAYER_Y_MAX, PLAYER_Y_MIN, PLAYER1_COLOR, PLAYER1_X,
+    PLAYER2_COLOR, PLAYER2_X, SELF_HIT, WORLD_HALF_H, WORLD_HALF_W, is_in_extended_range,
+    is_on_screen,
 };
 
 // ── Client-only constants ───────────────────────────────────────────────────

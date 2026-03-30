@@ -1,8 +1,8 @@
 pub mod collision;
 pub mod input;
 pub mod lobby;
-pub mod missile;
 pub mod network;
+pub mod missile;
 pub mod particles;
 pub mod physics;
 pub mod planet;

@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use gnils_protocol::{generate_planets, PlanetData};
+use gnils_protocol::{PlanetData, generate_planets};
 use rand::thread_rng;
 
 use crate::components::Planet;
@@ -20,7 +20,7 @@ pub fn spawn_planets(
     spawn_planet_entities(&mut commands, &assets, &planets);
 }
 
-/// Spawn Bevy entities for a slice of `PlanetData` (used by both local play and network setup).
+/// Spawn Bevy entities for a slice of `PlanetData`.
 pub fn spawn_planet_entities(commands: &mut Commands, assets: &GameAssets, planets: &[PlanetData]) {
     for planet in planets {
         let px = planet.pos.0 as f32;

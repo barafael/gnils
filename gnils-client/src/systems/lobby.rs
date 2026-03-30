@@ -1,7 +1,6 @@
 /// Lobby / main menu system.
 ///
 /// Handles keyboard-navigated menus for local and networked play.
-
 use bevy::app::AppExit;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
@@ -95,7 +94,6 @@ fn update_lobby_display(
     root_q: Query<Entity, With<LobbyUi>>,
     children_q: Query<Entity, With<LobbyUiChild>>,
 ) {
-    // Cursor blink forces a redraw every ~0.5 s in Join screen
     let in_join = *phase.get() == GamePhase::MainMenu && lobby.screen == LobbyScreen::Join;
     if !lobby.is_changed()
         && !join_addr.is_changed()
@@ -111,14 +109,21 @@ fn update_lobby_display(
     }
 
     let Ok(root) = root_q.single() else { return };
-    let cursor = if ((time.elapsed_secs() * 2.0) as u32) % 2 == 0 { "|" } else { " " };
+    let cursor = if ((time.elapsed_secs() * 2.0) as u32) % 2 == 0 {
+        "|"
+    } else {
+        " "
+    };
 
     for line in build_lines(&lobby, &join_addr, &settings, phase.get(), cursor) {
         let child = commands
             .spawn((
                 LobbyUiChild,
                 Text::new(line.text),
-                TextFont { font_size: line.size, ..default() },
+                TextFont {
+                    font_size: line.size,
+                    ..default()
+                },
                 TextColor(line.color),
             ))
             .id();
@@ -136,21 +141,40 @@ struct UiLine {
 
 impl UiLine {
     fn title(s: impl Into<String>) -> Self {
-        Self { text: s.into(), size: 36.0, color: Color::WHITE }
+        Self {
+            text: s.into(),
+            size: 36.0,
+            color: Color::WHITE,
+        }
     }
     fn sel(s: impl Into<String>, selected: bool) -> Self {
         Self {
-            text: s.into(), size: 22.0,
-            color: if selected { Color::srgb(1.0, 0.9, 0.3) } else { Color::srgb(0.8, 0.8, 0.8) },
+            text: s.into(),
+            size: 22.0,
+            color: if selected {
+                Color::srgb(1.0, 0.9, 0.3)
+            } else {
+                Color::srgb(0.8, 0.8, 0.8)
+            },
         }
     }
     fn info(s: impl Into<String>) -> Self {
-        Self { text: s.into(), size: 20.0, color: Color::srgb(0.6, 1.0, 0.6) }
+        Self {
+            text: s.into(),
+            size: 20.0,
+            color: Color::srgb(0.6, 1.0, 0.6),
+        }
     }
     fn dim(s: impl Into<String>) -> Self {
-        Self { text: s.into(), size: 16.0, color: Color::srgb(0.45, 0.45, 0.45) }
+        Self {
+            text: s.into(),
+            size: 16.0,
+            color: Color::srgb(0.45, 0.45, 0.45),
+        }
     }
-    fn gap() -> Self { Self::dim("") }
+    fn gap() -> Self {
+        Self::dim("")
+    }
 }
 
 fn build_lines(
@@ -160,29 +184,39 @@ fn build_lines(
     phase: &GamePhase,
     cursor: &str,
 ) -> Vec<UiLine> {
-    // Transient waiting screens
     match phase {
-        GamePhase::Connecting => return vec![
-            UiLine::title("Connecting…"),
-            UiLine::dim("Press Escape to cancel"),
-        ],
-        GamePhase::WaitingForOpponent => return vec![
-            UiLine::title("Waiting for opponent…"),
-            UiLine::dim("Press Escape to cancel"),
-        ],
+        GamePhase::Connecting => {
+            return vec![
+                UiLine::title("Connecting..."),
+                UiLine::dim("Press Escape to cancel"),
+            ];
+        }
+        GamePhase::WaitingForOpponent => {
+            return vec![
+                UiLine::title("Waiting for opponent..."),
+                UiLine::dim("Press Escape to cancel"),
+            ];
+        }
         _ => {}
     }
 
     match lobby.screen {
         LobbyScreen::Main => {
+            #[cfg(not(target_arch = "wasm32"))]
             const OPTS: &[&str] = &["New Game", "Network", "Settings", "Help", "Quit"];
+            #[cfg(target_arch = "wasm32")]
+            const OPTS: &[&str] = &["New Game", "Network", "Settings", "Help"];
             let mut v = vec![UiLine::title("SLINGSHOT"), UiLine::gap()];
             for (i, o) in OPTS.iter().enumerate() {
-                let t = if i == lobby.selected { format!("> {o}") } else { format!("  {o}") };
+                let t = if i == lobby.selected {
+                    format!("> {o}")
+                } else {
+                    format!("  {o}")
+                };
                 v.push(UiLine::sel(t, i == lobby.selected));
             }
             v.push(UiLine::gap());
-            v.push(UiLine::dim("↑↓ navigate   Enter select"));
+            v.push(UiLine::dim("Arrow keys navigate   Enter select"));
             v
         }
 
@@ -193,28 +227,35 @@ fn build_lines(
             const OPTS: &[&str] = &["Join", "Back"];
             let mut v = vec![UiLine::title("NETWORK"), UiLine::gap()];
             for (i, o) in OPTS.iter().enumerate() {
-                let t = if i == lobby.selected { format!("> {o}") } else { format!("  {o}") };
+                let t = if i == lobby.selected {
+                    format!("> {o}")
+                } else {
+                    format!("  {o}")
+                };
                 v.push(UiLine::sel(t, i == lobby.selected));
             }
             v.push(UiLine::gap());
-            v.push(UiLine::dim("↑↓ navigate   Enter select   Escape back"));
+            v.push(UiLine::dim("Arrow keys navigate   Enter select   Escape back"));
             v
         }
 
         LobbyScreen::Host => {
             let mut v = vec![UiLine::title("HOSTING"), UiLine::gap()];
             if lobby.server_spawned {
-                v.push(UiLine::info(format!("Address:   127.0.0.1:{}", gnils_protocol::SERVER_PORT)));
+                v.push(UiLine::info(format!(
+                    "Address:   127.0.0.1:{}",
+                    gnils_protocol::SERVER_PORT
+                )));
                 if lobby.cert_hash.is_empty() {
-                    v.push(UiLine::dim("Reading certificate hash…"));
+                    v.push(UiLine::dim("Reading certificate hash..."));
                 } else {
                     v.push(UiLine::info(format!("Cert hash: {}", &lobby.cert_hash)));
                 }
                 v.push(UiLine::gap());
                 v.push(UiLine::dim("Share address + cert with opponent"));
-                v.push(UiLine::dim("Connecting…"));
+                v.push(UiLine::dim("Connecting..."));
             } else {
-                v.push(UiLine::dim("Starting server…"));
+                v.push(UiLine::dim("Starting server..."));
             }
             v.push(UiLine::gap());
             v.push(UiLine::dim("Escape to cancel"));
@@ -222,9 +263,21 @@ fn build_lines(
         }
 
         LobbyScreen::Join => {
-            let addr = if join_addr.text.is_empty() { "127.0.0.1:5888" } else { &join_addr.text };
-            let addr_line = format!("Address:   {}{}", addr, if lobby.selected == 0 { cursor } else { "" });
-            let cert_line = format!("Cert hash: {}{}", join_addr.cert_hash, if lobby.selected == 1 { cursor } else { "" });
+            let addr = if join_addr.text.is_empty() {
+                "127.0.0.1:5888"
+            } else {
+                &join_addr.text
+            };
+            let addr_line = format!(
+                "Address:   {}{}",
+                addr,
+                if lobby.selected == 0 { cursor } else { "" }
+            );
+            let cert_line = format!(
+                "Cert hash: {}{}",
+                join_addr.cert_hash,
+                if lobby.selected == 1 { cursor } else { "" }
+            );
             vec![
                 UiLine::title("JOIN GAME"),
                 UiLine::gap(),
@@ -238,21 +291,25 @@ fn build_lines(
         LobbyScreen::Settings => {
             let on_off = |b: bool| if b { "On" } else { "Off" };
             let rows: &[(&str, String)] = &[
-                ("Max planets",  settings.max_planets.to_string()),
-                ("Blackholes",   settings.max_blackholes.to_string()),
-                ("Bounce",       on_off(settings.bounce).into()),
-                ("Invisible",    on_off(settings.invisible).into()),
-                ("Fixed power",  on_off(settings.fixed_power).into()),
-                ("Particles",    on_off(settings.particles_enabled).into()),
-                ("Max rounds",   settings.max_rounds.to_string()),
-                ("Max flight",   settings.max_flight.to_string()),
-                ("Fullscreen",   on_off(settings.fullscreen).into()),
-                ("Back",         String::new()),
+                ("Max planets", settings.max_planets.to_string()),
+                ("Blackholes", settings.max_blackholes.to_string()),
+                ("Bounce", on_off(settings.bounce).into()),
+                ("Invisible", on_off(settings.invisible).into()),
+                ("Fixed power", on_off(settings.fixed_power).into()),
+                ("Particles", on_off(settings.particles_enabled).into()),
+                ("Max rounds", settings.max_rounds.to_string()),
+                ("Max flight", settings.max_flight.to_string()),
+                ("Fullscreen", on_off(settings.fullscreen).into()),
+                ("Back", String::new()),
             ];
             let mut v = vec![UiLine::title("SETTINGS"), UiLine::gap()];
             for (i, (label, val)) in rows.iter().enumerate() {
                 let text = if val.is_empty() {
-                    if i == lobby.selected { "> Back".into() } else { "  Back".into() }
+                    if i == lobby.selected {
+                        "> Back".into()
+                    } else {
+                        "  Back".into()
+                    }
                 } else {
                     let prefix = if i == lobby.selected { ">" } else { " " };
                     format!("{prefix} {label:<14} {val}")
@@ -260,7 +317,7 @@ fn build_lines(
                 v.push(UiLine::sel(text, i == lobby.selected));
             }
             v.push(UiLine::gap());
-            v.push(UiLine::dim("↑↓ select   ←→ change   Escape back"));
+            v.push(UiLine::dim("Arrow keys select / change   Escape back"));
             v
         }
 
@@ -268,14 +325,14 @@ fn build_lines(
             vec![
                 UiLine::title("HOW TO PLAY"),
                 UiLine::gap(),
-                UiLine::sel("↑ / ↓  — adjust power", false),
-                UiLine::sel("← / →  — adjust angle", false),
-                UiLine::sel("Space / Enter  — fire", false),
-                UiLine::sel("Hold Shift  — 5× coarser", false),
-                UiLine::sel("Hold Ctrl   — fine adjust", false),
+                UiLine::sel("Up / Down    -- adjust power", false),
+                UiLine::sel("Left / Right -- adjust angle", false),
+                UiLine::sel("Space / Enter  -- fire", false),
+                UiLine::sel("Hold Shift  -- 5x coarser", false),
+                UiLine::sel("Hold Ctrl   -- fine adjust", false),
                 UiLine::gap(),
                 UiLine::sel("Hit opponent:  +1500 (minus slow penalty)", false),
-                UiLine::sel("Self-hit:      −2000", false),
+                UiLine::sel("Self-hit:      -2000", false),
                 UiLine::gap(),
                 UiLine::dim("Escape to go back"),
             ]
@@ -299,16 +356,38 @@ fn lobby_keyboard_input(
 
     match lobby.screen {
         LobbyScreen::Main => {
+            #[cfg(not(target_arch = "wasm32"))]
             const N: usize = 5;
-            if just(KeyCode::ArrowDown)  { lobby.selected = (lobby.selected + 1) % N; }
-            if just(KeyCode::ArrowUp)    { lobby.selected = (lobby.selected + N - 1) % N; }
+            #[cfg(target_arch = "wasm32")]
+            const N: usize = 4;
+            if just(KeyCode::ArrowDown) {
+                lobby.selected = (lobby.selected + 1) % N;
+            }
+            if just(KeyCode::ArrowUp) {
+                lobby.selected = (lobby.selected + N - 1) % N;
+            }
             if just(KeyCode::Enter) || just(KeyCode::Space) {
                 match lobby.selected {
-                    0 => { *net_mode = NetworkMode::Local; next.set(GamePhase::Loading); }
-                    1 => { lobby.screen = LobbyScreen::NetworkSub; lobby.selected = 0; }
-                    2 => { lobby.screen = LobbyScreen::Settings;   lobby.selected = 0; }
-                    3 => { lobby.screen = LobbyScreen::Help;        lobby.selected = 0; }
-                    4 => { exit.write(AppExit::Success); }
+                    0 => {
+                        *net_mode = NetworkMode::Local;
+                        next.set(GamePhase::Loading);
+                    }
+                    1 => {
+                        lobby.screen = LobbyScreen::NetworkSub;
+                        lobby.selected = 0;
+                    }
+                    2 => {
+                        lobby.screen = LobbyScreen::Settings;
+                        lobby.selected = 0;
+                    }
+                    3 => {
+                        lobby.screen = LobbyScreen::Help;
+                        lobby.selected = 0;
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    4 => {
+                        exit.write(AppExit::Success);
+                    }
                     _ => {}
                 }
             }
@@ -316,12 +395,19 @@ fn lobby_keyboard_input(
 
         LobbyScreen::NetworkSub => {
             #[cfg(not(target_arch = "wasm32"))]
-            const N: usize = 3; // Host / Join / Back
+            const N: usize = 3;
             #[cfg(target_arch = "wasm32")]
-            const N: usize = 2; // Join / Back
-            if just(KeyCode::ArrowDown)  { lobby.selected = (lobby.selected + 1) % N; }
-            if just(KeyCode::ArrowUp)    { lobby.selected = (lobby.selected + N - 1) % N; }
-            if just(KeyCode::Escape) { lobby.screen = LobbyScreen::Main; lobby.selected = 1; }
+            const N: usize = 2;
+            if just(KeyCode::ArrowDown) {
+                lobby.selected = (lobby.selected + 1) % N;
+            }
+            if just(KeyCode::ArrowUp) {
+                lobby.selected = (lobby.selected + N - 1) % N;
+            }
+            if just(KeyCode::Escape) {
+                lobby.screen = LobbyScreen::Main;
+                lobby.selected = 1;
+            }
             if just(KeyCode::Enter) || just(KeyCode::Space) {
                 #[cfg(not(target_arch = "wasm32"))]
                 match lobby.selected {
@@ -331,39 +417,73 @@ fn lobby_keyboard_input(
                         lobby.server_spawned = false;
                         lobby.cert_hash.clear();
                     }
-                    1 => { lobby.screen = LobbyScreen::Join; lobby.selected = 0; }
-                    2 => { lobby.screen = LobbyScreen::Main; lobby.selected = 1; }
+                    1 => {
+                        lobby.screen = LobbyScreen::Join;
+                        lobby.selected = 0;
+                    }
+                    2 => {
+                        lobby.screen = LobbyScreen::Main;
+                        lobby.selected = 1;
+                    }
                     _ => {}
                 }
                 #[cfg(target_arch = "wasm32")]
                 match lobby.selected {
-                    0 => { lobby.screen = LobbyScreen::Join; lobby.selected = 0; }
-                    1 => { lobby.screen = LobbyScreen::Main; lobby.selected = 1; }
+                    0 => {
+                        lobby.screen = LobbyScreen::Join;
+                        lobby.selected = 0;
+                    }
+                    1 => {
+                        lobby.screen = LobbyScreen::Main;
+                        lobby.selected = 1;
+                    }
                     _ => {}
                 }
             }
         }
 
         LobbyScreen::Host => {
-            if just(KeyCode::Escape) { lobby.screen = LobbyScreen::NetworkSub; lobby.selected = 0; }
+            if just(KeyCode::Escape) {
+                lobby.screen = LobbyScreen::NetworkSub;
+                lobby.selected = 0;
+            }
         }
 
         LobbyScreen::Join => {
-            if just(KeyCode::Escape) { lobby.screen = LobbyScreen::NetworkSub; lobby.selected = 1; return; }
-            if just(KeyCode::Tab)    { lobby.selected = 1 - lobby.selected; return; }
+            if just(KeyCode::Escape) {
+                lobby.screen = LobbyScreen::NetworkSub;
+                lobby.selected = 1;
+                return;
+            }
+            if just(KeyCode::Tab) {
+                lobby.selected = 1 - lobby.selected;
+                return;
+            }
             if just(KeyCode::Enter) {
-                if join_addr.text.is_empty() { join_addr.text = "127.0.0.1:5888".to_string(); }
+                if join_addr.text.is_empty() {
+                    join_addr.text = "127.0.0.1:5888".to_string();
+                }
                 next.set(GamePhase::Connecting);
                 return;
             }
-            let field: &mut String = if lobby.selected == 0 { &mut join_addr.text } else { &mut join_addr.cert_hash };
+            let field: &mut String = if lobby.selected == 0 {
+                &mut join_addr.text
+            } else {
+                &mut join_addr.cert_hash
+            };
             for ev in key_events.read() {
-                if ev.state != bevy::input::ButtonState::Pressed { continue; }
+                if ev.state != bevy::input::ButtonState::Pressed {
+                    continue;
+                }
                 match ev.key_code {
-                    KeyCode::Backspace => { field.pop(); }
+                    KeyCode::Backspace => {
+                        field.pop();
+                    }
                     _ => {
                         if let bevy::input::keyboard::Key::Character(ref s) = ev.logical_key {
-                            if field.len() < 64 { field.push_str(s.as_str()); }
+                            if field.len() < 64 {
+                                field.push_str(s.as_str());
+                            }
                         }
                     }
                 }
@@ -372,16 +492,30 @@ fn lobby_keyboard_input(
 
         LobbyScreen::Settings => {
             const N: usize = 10;
-            if just(KeyCode::ArrowDown)  { lobby.selected = (lobby.selected + 1) % N; }
-            if just(KeyCode::ArrowUp)    { lobby.selected = (lobby.selected + N - 1) % N; }
-            if just(KeyCode::Escape) || (just(KeyCode::Enter) && lobby.selected == 9) {
-                lobby.screen = LobbyScreen::Main; lobby.selected = 2;
+            if just(KeyCode::ArrowDown) {
+                lobby.selected = (lobby.selected + 1) % N;
             }
-            let d: i32 = if just(KeyCode::ArrowRight) { 1 } else if just(KeyCode::ArrowLeft) { -1 } else { 0 };
+            if just(KeyCode::ArrowUp) {
+                lobby.selected = (lobby.selected + N - 1) % N;
+            }
+            if just(KeyCode::Escape) || (just(KeyCode::Enter) && lobby.selected == 9) {
+                lobby.screen = LobbyScreen::Main;
+                lobby.selected = 2;
+            }
+            let d: i32 = if just(KeyCode::ArrowRight) {
+                1
+            } else if just(KeyCode::ArrowLeft) {
+                -1
+            } else {
+                0
+            };
             if d != 0 {
                 match lobby.selected {
                     0 => settings.max_planets = (settings.max_planets as i32 + d).max(1) as u32,
-                    1 => settings.max_blackholes = (settings.max_blackholes as i32 + d).max(0) as u32,
+                    1 => {
+                        settings.max_blackholes =
+                            (settings.max_blackholes as i32 + d).max(0) as u32
+                    }
                     2 => settings.bounce = !settings.bounce,
                     3 => settings.invisible = !settings.invisible,
                     4 => settings.fixed_power = !settings.fixed_power,
@@ -396,7 +530,8 @@ fn lobby_keyboard_input(
 
         LobbyScreen::Help => {
             if just(KeyCode::Escape) || just(KeyCode::Enter) || just(KeyCode::Space) {
-                lobby.screen = LobbyScreen::Main; lobby.selected = 3;
+                lobby.screen = LobbyScreen::Main;
+                lobby.selected = 3;
             }
         }
     }
@@ -407,7 +542,6 @@ fn lobby_keyboard_input(
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Resource, Default)]
 pub struct HostServerState {
-    /// Wrapped in Mutex to satisfy Bevy's `Resource: Sync` bound.
     pub cert_rx: Option<std::sync::Mutex<std::sync::mpsc::Receiver<String>>>,
     pub child: Option<std::process::Child>,
 }
@@ -419,13 +553,14 @@ fn poll_host_server(
     mut next: ResMut<NextState<GamePhase>>,
     mut host_state: ResMut<HostServerState>,
 ) {
-    if lobby.screen != LobbyScreen::Host { return; }
+    if lobby.screen != LobbyScreen::Host {
+        return;
+    }
 
     if !lobby.server_spawned {
         use crate::systems::network::spawn_server_process;
         if let Some(mut child) = spawn_server_process() {
             let (tx, rx) = std::sync::mpsc::channel();
-            // Take stdout before moving child into storage
             if let Some(stdout) = child.stdout.take() {
                 std::thread::spawn(move || {
                     use crate::systems::network::read_server_cert_hash;

@@ -34,12 +34,7 @@ pub fn missile_gravity(
     mut missile_q: Query<(&mut GravityBody, &MissileMarker)>,
     planets: Query<&Planet>,
     turn: Res<TurnState>,
-    net_mode: Res<NetworkMode>,
 ) {
-    // In network mode the server drives the missile; client just renders received positions.
-    if net_mode.is_network() {
-        return;
-    }
     if !turn.firing {
         return;
     }

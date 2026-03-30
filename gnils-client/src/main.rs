@@ -100,7 +100,7 @@ fn main() {
             systems::collision::missile_collision
                 .run_if(in_state(GamePhase::Firing).and(resource_equals(NetworkMode::Local))),
         )
-        // Firing → Aiming/RoundOver transition — local only; server drives transitions in network mode
+        // Firing -> Aiming/RoundOver transition — local only; server drives transitions in network mode
         .add_systems(
             FixedUpdate,
             firing_done_system
@@ -141,12 +141,12 @@ fn main() {
             )
                 .run_if(not(in_state(GamePhase::Loading))),
         )
-        // Loading → RoundSetup transition
+        // Loading -> RoundSetup transition
         .add_systems(
             Update,
             loading_transition_system.run_if(in_state(GamePhase::Loading)),
         )
-        // Update phase (runs every frame for rendering) - split to stay within 8-tuple limit
+        // Update phase (runs every frame for rendering)
         .add_systems(
             Update,
             (
@@ -187,7 +187,7 @@ fn loading_transition_system(
 
 fn fire_transition_system(turn: Res<TurnState>, mut next_state: ResMut<NextState<GamePhase>>) {
     if turn.firing {
-        info!("Transitioning Aiming → Firing");
+        info!("Transitioning Aiming -> Firing");
         next_state.set(GamePhase::Firing);
     }
 }
@@ -206,11 +206,11 @@ fn firing_done_system(
 
     if !turn.firing && !missile_active {
         if turn.round_over {
-            info!("Transitioning Firing → RoundOver");
+            info!("Transitioning Firing -> RoundOver");
             next_state.set(GamePhase::RoundOver);
         } else {
             info!(
-                "Transitioning Firing → Aiming (player {})",
+                "Transitioning Firing -> Aiming (player {})",
                 turn.current_player
             );
             next_state.set(GamePhase::Aiming);

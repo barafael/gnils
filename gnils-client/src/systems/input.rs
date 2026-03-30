@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, WindowMode};
-use bevy_matchbox::prelude::MatchboxSocket;
+
+use gnils_protocol::ClientMsg;
+use lightyear::prelude::MessageSender;
 
 use crate::components::*;
 use crate::constants::*;
@@ -13,7 +15,7 @@ pub fn aiming_input(
     mut players: Query<&mut Player>,
     menu: Res<MenuOpen>,
     net_mode: Res<NetworkMode>,
-    mut socket: Option<ResMut<MatchboxSocket>>,
+    mut senders: Query<&mut MessageSender<ClientMsg>>,
 ) {
     if turn.round_over || turn.firing || menu.open {
         return;
@@ -23,7 +25,6 @@ pub fn aiming_input(
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
 
-    // angle_step is in radians; values match the original degree increments converted.
     let (power_step, angle_step) = if ctrl {
         (1.0, 0.25_f64.to_radians())
     } else if shift {
@@ -54,8 +55,6 @@ pub fn aiming_input(
         if keys.pressed(KeyCode::ArrowDown) {
             player.power = (player.power - power_step).max(0.0);
         }
-        // In CCW-from-east convention, ArrowLeft rotates the gun toward north (CCW = +angle),
-        // ArrowRight rotates toward south (CW = -angle).
         if keys.pressed(KeyCode::ArrowLeft) {
             player.angle += angle_step;
             player.rel_rot += angle_step;
@@ -78,11 +77,9 @@ pub fn aiming_input(
         }
 
         if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) {
-            if let (true, Some(s)) = (net_mode.is_network(), &mut socket) {
-                // Network mode: send the shot to peer
-                send_fire_shot(player.angle, player.power, s);
+            if net_mode.is_network() {
+                send_fire_shot(player.angle, player.power, &mut senders);
             }
-            // Both modes: set firing flag to transition Aiming → Firing
             turn.firing = true;
         }
     }
@@ -102,7 +99,7 @@ pub fn round_over_input(
     if !turn.round_over || menu.open {
         return;
     }
-    // In network mode the host auto-advances; Space/Enter does nothing here
+    // In network mode the server auto-advances; Space/Enter does nothing here
     if net_mode.is_network() {
         return;
     }
@@ -177,7 +174,6 @@ pub fn menu_nav_input(
         return;
     }
 
-    // Number of selectable (non-separator) items — must match rows in update_menu_display
     const N_ITEMS: usize = 11;
 
     if keys.just_pressed(KeyCode::ArrowDown) {
@@ -198,11 +194,9 @@ pub fn menu_nav_input(
     }
 
     match menu.selected {
-        // Resume Game
         0 => {
             menu.open = false;
         }
-        // New Game
         1 => {
             menu.open = false;
             for mut player in players.iter_mut() {
@@ -219,29 +213,23 @@ pub fn menu_nav_input(
             );
             next_state.set(GamePhase::RoundSetup);
         }
-        // Main Menu
         2 => {
             menu.open = false;
             *net_mode = NetworkMode::Local;
             next_state.set(GamePhase::MainMenu);
         }
-        // Bounce
         3 => {
             settings.bounce = !settings.bounce;
         }
-        // Fixed Power
         4 => {
             settings.fixed_power = !settings.fixed_power;
         }
-        // Invisible Planets
         5 => {
             settings.invisible = !settings.invisible;
         }
-        // Particles
         6 => {
             settings.particles_enabled = !settings.particles_enabled;
         }
-        // Max Planets (cycle 2→3→4→2)
         7 => {
             settings.max_planets = if left {
                 if settings.max_planets <= 2 {
@@ -257,7 +245,6 @@ pub fn menu_nav_input(
                 }
             };
         }
-        // Max Blackholes (cycle 0→1→2→3→0)
         8 => {
             settings.max_blackholes = if left {
                 if settings.max_blackholes == 0 {
@@ -269,7 +256,6 @@ pub fn menu_nav_input(
                 (settings.max_blackholes + 1) % 4
             };
         }
-        // Rounds (cycle 3→5→10→20→inf→3)
         9 => {
             let options = [3u32, 5, 10, 20, 0];
             let idx = options
@@ -283,7 +269,6 @@ pub fn menu_nav_input(
             };
             settings.max_rounds = options[new_idx];
         }
-        // Fullscreen
         10 => {
             settings.fullscreen = !settings.fullscreen;
             if let Ok(mut window) = window_q.single_mut() {
@@ -298,7 +283,7 @@ pub fn menu_nav_input(
     }
 }
 
-/// Shared reset for starting a fresh round: clear trail, reset player states, deactivate missile.
+/// Shared reset for starting a fresh round.
 fn reset_for_new_round(
     turn: &mut TurnState,
     players: &mut Query<&mut Player>,
@@ -313,7 +298,6 @@ fn reset_for_new_round(
     turn.round_over = false;
     turn.firing = false;
     turn.show_round = 100.0;
-    turn.round_over_timer = 0.0;
 
     for mut player in players.iter_mut() {
         player.power = 100.0;
@@ -321,7 +305,6 @@ fn reset_for_new_round(
         player.attempts = 0;
         player.explosion_frame = 0;
         player.rel_rot = 0.0;
-        // angle: radians CCW from east (P1 faces east = 0, P2 faces west = π)
         player.angle = if player.id == 1 {
             0.0
         } else {
