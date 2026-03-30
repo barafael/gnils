@@ -14,24 +14,13 @@ pub fn setup_camera(mut commands: Commands) {
 pub fn load_assets(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
-    // Ship sprite strip: 320x33, 8 frames of 40x33
-    let ship_layout = TextureAtlasLayout::from_grid(
-        UVec2::new(SHIP_FRAME_WIDTH, SHIP_FRAME_HEIGHT),
-        8,
-        1,
-        None,
-        None,
-    );
-    let ship_atlas_layout = atlas_layouts.add(ship_layout);
-
     let assets = GameAssets {
         font: asset_server.load("FreeSansBold.ttf"),
         backdrop: asset_server.load("backdrop.png"),
         red_ship: asset_server.load("red_ship.png"),
         blue_ship: asset_server.load("blue_ship.png"),
-        ship_atlas_layout,
         shot: asset_server.load("shot.png"),
         explosion: asset_server.load("explosion.png"),
         explosion_10: asset_server.load("explosion-10.png"),
@@ -48,6 +37,22 @@ pub fn load_assets(
         ],
     };
     commands.insert_resource(assets);
+
+    // Pre-allocate blended ship images (one per player, updated each frame).
+    let blank = Image::new(
+        Extent3d {
+            width: SHIP_FRAME_WIDTH,
+            height: SHIP_FRAME_HEIGHT,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        vec![0u8; (SHIP_FRAME_WIDTH * SHIP_FRAME_HEIGHT * 4) as usize],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::all(),
+    );
+    let p1 = images.add(blank.clone());
+    let p2 = images.add(blank);
+    commands.insert_resource(BlendedShipImages { handles: [p1, p2] });
 }
 
 pub fn setup_trail_canvas(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
@@ -89,7 +94,7 @@ pub fn setup_background(mut commands: Commands, assets: Res<GameAssets>) {
     ));
 }
 
-pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
+pub fn setup_players(mut commands: Commands, blended: Res<BlendedShipImages>) {
     use rand::Rng;
     let mut rng = rand::thread_rng();
 
@@ -97,13 +102,7 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
     let y2 = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
 
     commands.spawn((
-        Sprite::from_atlas_image(
-            assets.red_ship.clone(),
-            TextureAtlas {
-                layout: assets.ship_atlas_layout.clone(),
-                index: 0,
-            },
-        ),
+        Sprite::from_image(blended.handles[0].clone()),
         Transform::from_xyz(-360.0, y1 as f32, 4.0),
         Player {
             id: 1,
@@ -119,27 +118,8 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
         },
     ));
 
-    // Blend layer sprite for player 1 (same position, slightly higher Z, different atlas frame)
     commands.spawn((
-        Sprite::from_atlas_image(
-            assets.red_ship.clone(),
-            TextureAtlas {
-                layout: assets.ship_atlas_layout.clone(),
-                index: 0,
-            },
-        ),
-        Transform::from_xyz(-360.0, y1 as f32, 4.05),
-        crate::components::ShipBlendSprite { player_id: 1 },
-    ));
-
-    commands.spawn((
-        Sprite::from_atlas_image(
-            assets.blue_ship.clone(),
-            TextureAtlas {
-                layout: assets.ship_atlas_layout.clone(),
-                index: 0,
-            },
-        ),
+        Sprite::from_image(blended.handles[1].clone()),
         Transform::from_xyz(360.0, y2 as f32, 4.0),
         Player {
             id: 2,
@@ -153,19 +133,6 @@ pub fn setup_players(mut commands: Commands, assets: Res<GameAssets>) {
             gun_offset: GUN_OFFSET_P2,
             explosion_frame: 0,
         },
-    ));
-
-    // Blend layer sprite for player 2
-    commands.spawn((
-        Sprite::from_atlas_image(
-            assets.blue_ship.clone(),
-            TextureAtlas {
-                layout: assets.ship_atlas_layout.clone(),
-                index: 0,
-            },
-        ),
-        Transform::from_xyz(360.0, y2 as f32, 4.05),
-        crate::components::ShipBlendSprite { player_id: 2 },
     ));
 }
 

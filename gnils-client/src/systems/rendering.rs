@@ -126,7 +126,7 @@ pub fn draw_zoom_view(
     mut gizmos: Gizmos,
     turn: Res<TurnState>,
     missile_q: Query<(&GravityBody, &MissileMarker)>,
-    players: Query<(&Player, &Transform), Without<ShipBlendSprite>>,
+    players: Query<(&Player, &Transform)>,
     mut dim_q: Query<&mut Visibility, With<ZoomDimSprite>>,
 ) {
     let mut missile_pos = None;
@@ -261,7 +261,7 @@ pub fn update_round_over_display(
             Without<UiMissileStatus>,
         ),
     >,
-    players: Query<&Player, Without<ShipBlendSprite>>,
+    players: Query<&Player>,
 ) {
     let show_msg = turn.round_over && turn.show_round <= 30.0 && turn.show_planets <= 0.0;
 

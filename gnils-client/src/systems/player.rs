@@ -4,87 +4,64 @@ use gnils_protocol::compute_launch_point;
 use crate::components::*;
 use crate::resources::*;
 
-/// Update player ship transforms based on position and rotation.
-/// Selects atlas frames using ship_blend::compute_blend_frames and updates
-/// a companion ShipBlendSprite for smooth inter-frame blending.
+/// Update player ship sprites via pixel-level frame blending (matching the
+/// Python `change_angle` pipeline: blend two adjacent frames, then rotate).
 pub fn update_player_sprites(
-    mut players: Query<(&Player, &mut Transform, &mut Sprite), Without<ShipBlendSprite>>,
-    mut blend_sprites: Query<(&ShipBlendSprite, &mut Transform, &mut Sprite), Without<Player>>,
+    mut players: Query<(&Player, &mut Transform, &mut Sprite)>,
     assets: Res<GameAssets>,
+    mut images: ResMut<Assets<Image>>,
+    blended: Res<BlendedShipImages>,
 ) {
     for (player, mut transform, mut sprite) in players.iter_mut() {
         if player.shot {
-            // Hide companion blend sprite during explosion
-            for (blend, _, mut b_sprite) in blend_sprites.iter_mut() {
-                if blend.player_id == player.id {
-                    b_sprite.color = Color::NONE;
-                }
-            }
             continue;
         }
 
+        let blended_handle = &blended.handles[(player.id - 1) as usize];
+
         // Restore ship sprite if it was replaced by explosion
-        if sprite.texture_atlas.is_none() {
-            let ship_image = if player.id == 1 {
-                assets.red_ship.clone()
-            } else {
-                assets.blue_ship.clone()
-            };
-            sprite.image = ship_image;
-            sprite.texture_atlas = Some(TextureAtlas {
-                layout: assets.ship_atlas_layout.clone(),
-                index: 0,
-            });
+        if sprite.image != *blended_handle {
+            sprite.image = blended_handle.clone();
+            sprite.texture_atlas = None;
             sprite.custom_size = None;
         }
 
         // Compute blend frames: img1 = primary frame, img2 = secondary, f = blend factor
         // rel_rot is in radians; compute_blend_frames expects degrees.
-        let (img1, img2, blend_f) = crate::ship_blend::compute_blend_frames(player.rel_rot.to_degrees());
+        let (img1, img2, blend_f) =
+            crate::ship_blend::compute_blend_frames(player.rel_rot.to_degrees());
 
-        if let Some(ref mut atlas) = sprite.texture_atlas {
-            atlas.index = img1;
+        let strip_handle = if player.id == 1 {
+            &assets.red_ship
+        } else {
+            &assets.blue_ship
+        };
+
+        // Extract the two frames (releases borrow on images)
+        let frames = images.get(strip_handle).map(|strip| {
+            (
+                crate::ship_blend::extract_frame(strip, img1),
+                crate::ship_blend::extract_frame(strip, img2),
+            )
+        });
+
+        if let Some((frame1, frame2)) = frames {
+            let blended_img = crate::ship_blend::blend_frames(&frame1, &frame2, blend_f);
+            if let Some(target) = images.get_mut(blended_handle) {
+                *target = blended_img;
+            }
         }
-        sprite.color = Color::WHITE;
 
+        sprite.color = Color::WHITE;
         // rel_rot is radians CCW from the ship's natural facing direction.
         transform.rotation = Quat::from_rotation_z(player.rel_rot as f32);
-
-        // Update blend sprite: mirror position/rotation, different frame, partial alpha
-        for (blend, mut b_transform, mut b_sprite) in blend_sprites.iter_mut() {
-            if blend.player_id != player.id {
-                continue;
-            }
-
-            // Restore blend sprite image if needed (e.g. after explosion)
-            if b_sprite.texture_atlas.is_none() {
-                let ship_image = if player.id == 1 {
-                    assets.red_ship.clone()
-                } else {
-                    assets.blue_ship.clone()
-                };
-                b_sprite.image = ship_image;
-                b_sprite.texture_atlas = Some(TextureAtlas {
-                    layout: assets.ship_atlas_layout.clone(),
-                    index: img2,
-                });
-                b_sprite.custom_size = None;
-            }
-
-            if let Some(ref mut atlas) = b_sprite.texture_atlas {
-                atlas.index = img2;
-            }
-            b_sprite.color = Color::srgba(1.0, 1.0, 1.0, blend_f as f32);
-            b_transform.translation = transform.translation + Vec3::Z * 0.05;
-            b_transform.rotation = transform.rotation;
-        }
     }
 }
 
 /// Draw the aiming line using gizmos.
 pub fn draw_aim_line(
     mut gizmos: Gizmos,
-    players: Query<(&Player, &Transform), Without<ShipBlendSprite>>,
+    players: Query<(&Player, &Transform)>,
     turn: Res<TurnState>,
     menu: Res<crate::resources::MenuOpen>,
 ) {
@@ -112,8 +89,7 @@ pub fn draw_aim_line(
 /// Update ship explosion animation for hit players.
 /// Uses half-frame increments since this runs at ~60fps but Python runs at 30fps.
 pub fn update_ship_explosion(
-    mut players: Query<(&mut Player, &mut Sprite, &mut Transform), Without<ShipBlendSprite>>,
-    mut blend_sprites: Query<(&ShipBlendSprite, &mut Sprite), Without<Player>>,
+    mut players: Query<(&mut Player, &mut Sprite, &mut Transform)>,
     assets: Res<GameAssets>,
 ) {
     for (mut player, mut sprite, mut transform) in players.iter_mut() {
@@ -127,7 +103,7 @@ pub fn update_ship_explosion(
         let s = e * (6.0 - e) * 100.0 / 9.0;
 
         if s > 0.0 {
-            if sprite.texture_atlas.is_some() {
+            if player.explosion_frame == 1 {
                 sprite.image = assets.explosion.clone();
                 sprite.texture_atlas = None;
                 transform.rotation = Quat::IDENTITY;
@@ -136,19 +112,12 @@ pub fn update_ship_explosion(
         } else {
             sprite.custom_size = Some(Vec2::ZERO);
         }
-
-        // Hide blend sprite during explosion
-        for (blend, mut b_sprite) in blend_sprites.iter_mut() {
-            if blend.player_id == player.id {
-                b_sprite.color = Color::NONE;
-            }
-        }
     }
 }
 
 /// Update UI text for scores and angle/power.
 pub fn update_ui_text(
-    players: Query<&Player, Without<ShipBlendSprite>>,
+    players: Query<&Player>,
     turn: Res<TurnState>,
     mut score_p1: Query<
         &mut Text,
@@ -201,7 +170,11 @@ pub fn update_ui_text(
 
         if player.id == turn.current_player && !turn.firing && !turn.round_over {
             if let Ok(mut text) = angle_power.single_mut() {
-                **text = format!("Angle: {:.2}  Power: {:.1}", player.angle.to_degrees(), player.power);
+                **text = format!(
+                    "Angle: {:.2}  Power: {:.1}",
+                    player.angle.to_degrees(),
+                    player.power
+                );
             }
         }
     }

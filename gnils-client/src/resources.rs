@@ -46,7 +46,7 @@ impl NetworkMode {
     }
 }
 
-/// Text being typed in the join-game field.
+/// Server address and certificate hash for joining a game.
 #[derive(Resource, Default)]
 pub struct JoinAddress {
     pub text: String,
@@ -202,12 +202,17 @@ pub struct GameAssets {
     pub backdrop: Handle<Image>,
     pub red_ship: Handle<Image>,
     pub blue_ship: Handle<Image>,
-    pub ship_atlas_layout: Handle<TextureAtlasLayout>,
     pub shot: Handle<Image>,
     pub explosion: Handle<Image>,
     pub explosion_10: Handle<Image>,
     pub explosion_5: Handle<Image>,
     pub planets: [Handle<Image>; 8],
+}
+
+/// Pre-allocated images that receive the per-frame blended ship sprite.
+#[derive(Resource)]
+pub struct BlendedShipImages {
+    pub handles: [Handle<Image>; 2],
 }
 
 /// Result of the last round (for end-round message display).
