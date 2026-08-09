@@ -30,21 +30,21 @@ Both players share the same keyboard. Start from the main menu → **New Game**.
 
 ### Network multiplayer
 
-One player hosts, one joins. The host runs a local server; both connect over WebTransport.
+Peer-to-peer over WebRTC, relayed by a public signaling server. No server to run, no certificates to exchange. Both players share a room: one hosts, the other joins.
 
-**Hosting (native only):**
+**Hosting:**
 
 1. Main menu → **Network → Host**
-2. The server starts automatically and shows an address and certificate hash
-3. Share both with your opponent
+2. A room id is generated (shown in the address bar on the web build)
+3. Share the room id with your opponent
 
-**Joining (native or browser):**
+**Joining:**
 
 1. Main menu → **Network → Join**
-2. Enter the host's address (`ip:port`) and certificate hash
-3. Press `Enter` to connect
+2. Enter the host's room id
+3. Press `Enter` to connect; the game starts automatically when the second player is in the room
 
-> Browser clients can join but cannot host.
+> Works identically in the browser and native — anyone can host or join.
 
 ## Running locally
 
@@ -52,7 +52,6 @@ Requires [Rust](https://rustup.rs/).
 
 ```sh
 cargo run                      # native client
-cargo run -p gnils-server      # server (needed for network hosting)
 ```
 
 For the browser build, install [trunk](https://trunkrs.dev/) and run `trunk serve`.
