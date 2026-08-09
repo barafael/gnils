@@ -1,0 +1,22 @@
+[package]
+name = "gnils-net"
+description = "P2P WebRTC networking for Slingshot: host-sequenced event sourcing over matchbox"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = "0.18"
+matchbox_socket = { git = "https://github.com/barafael/matchbox.git" }
+postcard = { version = "1", features = ["alloc"] }
+serde = { version = "1", features = ["derive"] }
+rand = "0.8"
+uuid = "1"
+gnils-protocol = { path = "../gnils-protocol" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["js"] }
+web-sys = { version = "0.3", features = ["Window", "Location", "Url", "UrlSearchParams", "History"] }

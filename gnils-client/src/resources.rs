@@ -46,12 +46,10 @@ impl NetworkMode {
     }
 }
 
-/// Server address and certificate hash for joining a game.
+/// Room id for the P2P matchbox room we join or host.
 #[derive(Resource, Default)]
-pub struct JoinAddress {
+pub struct JoinRoom {
     pub text: String,
-    /// Certificate hash for WASM clients (hex).
-    pub cert_hash: String,
 }
 
 /// Lobby menu state.
@@ -59,9 +57,6 @@ pub struct JoinAddress {
 pub struct LobbyMenu {
     pub selected: usize,
     pub screen: LobbyScreen,
-    /// For host screen: cert hash received from spawned gnils-server.
-    pub cert_hash: String,
-    pub server_spawned: bool,
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -69,7 +64,6 @@ pub enum LobbyScreen {
     #[default]
     Main,
     NetworkSub,
-    Host,
     Join,
     Settings,
     Help,
@@ -226,6 +220,20 @@ pub struct RoundResult {
     pub power_penalty: i32,
     pub total_score: i32,
     pub message: String,
+}
+
+/// Deterministic RNG base seed for network games. The per-round seed is
+/// `base ^ round` (plus a salt for the player-Y draw), so both peers generate
+/// identical planets and layouts without exchanging them.
+#[derive(Resource)]
+pub struct NetSeed {
+    pub base: u64,
+}
+
+impl Default for NetSeed {
+    fn default() -> Self {
+        Self { base: 0 }
+    }
 }
 
 /// Queued particle spawn requests.

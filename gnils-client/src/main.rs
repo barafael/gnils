@@ -13,7 +13,7 @@ use components::MissileMarker;
 use constants::*;
 use resources::*;
 use systems::lobby::LobbyPlugin;
-use systems::network::GnilsClientNetPlugin;
+use systems::network::NetPlugin;
 
 fn main() {
     App::new()
@@ -26,8 +26,8 @@ fn main() {
             }),
             ..default()
         }))
-        // Network plugin (registers Lightyear client, channels, messages)
-        .add_plugins(GnilsClientNetPlugin)
+        // Network plugin (matchbox P2P: sequencing, host election, rooms)
+        .add_plugins(NetPlugin)
         // Lobby / main menu plugin
         .add_plugins(LobbyPlugin)
         .insert_resource(Time::<Fixed>::from_hz(gnils_protocol::TICK_HZ))
@@ -42,12 +42,17 @@ fn main() {
         .insert_resource(RoundResult::default())
         .insert_resource(MenuOpen::default())
         .insert_resource(NetworkMode::default())
-        .insert_resource(JoinAddress::default())
+        .insert_resource(NetSeed::default())
+        .insert_resource(JoinRoom::default())
         .insert_resource(LobbyMenu::default())
         // Startup systems (run once)
         .add_systems(
             Startup,
-            (systems::setup::setup_camera, systems::setup::load_assets),
+            (
+                systems::setup::setup_camera,
+                systems::setup::load_assets,
+                auto_join_test,
+            ),
         )
         // Deferred startup (needs assets resource to exist)
         .add_systems(
@@ -62,24 +67,25 @@ fn main() {
             )
                 .after(systems::setup::load_assets),
         )
-        // Round setup state (local only; in network mode the server drives RoundSetup via message)
+        // Round setup state (planets + round increment; in network mode the
+        // layout is derived deterministically from the shared NetSeed)
         .add_systems(
             OnEnter(GamePhase::RoundSetup),
-            (systems::planet::spawn_planets, systems::round::round_setup)
-                .chain()
-                .run_if(resource_equals(NetworkMode::Local)),
+            (systems::planet::spawn_planets, systems::round::round_setup).chain(),
         )
         // Aiming input (Update for reliable key detection)
         .add_systems(
             Update,
             systems::input::aiming_input.run_if(in_state(GamePhase::Aiming)),
         )
-        // Fire missile (FixedUpdate for physics setup) — local only; server drives in network mode
+        // Fire missile (FixedUpdate for physics setup). In network mode the
+        // `Sequenced` ShotFired echo sets `turn.firing`; both peers then launch
+        // through this identical path.
         .add_systems(
             FixedUpdate,
             (systems::missile::fire_missile, fire_transition_system)
                 .chain()
-                .run_if(in_state(GamePhase::Aiming).and(resource_equals(NetworkMode::Local))),
+                .run_if(in_state(GamePhase::Aiming)),
         )
         // Firing phase (physics at fixed timestep)
         .add_systems(
@@ -94,17 +100,15 @@ fn main() {
                 .chain()
                 .run_if(in_state(GamePhase::Firing)),
         )
-        // Collision detection — local only; server handles collision in network mode
+        // Collision detection — runs on both peers (deterministic lockstep)
         .add_systems(
             FixedUpdate,
-            systems::collision::missile_collision
-                .run_if(in_state(GamePhase::Firing).and(resource_equals(NetworkMode::Local))),
+            systems::collision::missile_collision.run_if(in_state(GamePhase::Firing)),
         )
-        // Firing -> Aiming/RoundOver transition — local only; server drives transitions in network mode
+        // Firing -> Aiming/RoundOver transition — runs on both peers
         .add_systems(
             FixedUpdate,
-            firing_done_system
-                .run_if(in_state(GamePhase::Firing).and(resource_equals(NetworkMode::Local))),
+            firing_done_system.run_if(in_state(GamePhase::Firing)),
         )
         // Impact handling & particle spawning — runs in any active state
         .add_systems(
@@ -182,6 +186,16 @@ fn loading_transition_system(
 ) {
     if assets.is_some() && trail.is_some() {
         next_state.set(GamePhase::RoundSetup);
+    }
+}
+
+/// Test hook: if `GNILS_AUTOJOIN=<room>` is set, join the room immediately on
+/// startup (skipping the main menu). Used for automated two-instance testing.
+fn auto_join_test(mut commands: Commands, mut next: ResMut<NextState<GamePhase>>) {
+    if let Ok(room) = std::env::var("GNILS_AUTOJOIN") {
+        info!(%room, "GNILS_AUTOJOIN set; auto-joining room");
+        gnils_net::open_socket_for(&mut commands, room);
+        next.set(GamePhase::Connecting);
     }
 }
 

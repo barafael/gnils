@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 use gnils_protocol::compute_shot_score;
+use rand::rngs::StdRng;
+use rand::{Rng, RngCore, SeedableRng};
 
 use crate::components::*;
 use crate::constants::*;
@@ -105,16 +107,25 @@ fn end_shot(turn: &mut TurnState) {
 }
 
 /// Round setup: increment round counter, randomize player positions, and transition to aiming.
+///
+/// In network mode the player-Y draws come from the shared `NetSeed` (derived
+/// `base ^ round`) so both peers place ships identically.
 pub fn round_setup(
     mut turn: ResMut<TurnState>,
     mut next_state: ResMut<NextState<GamePhase>>,
     settings: Res<GameSettings>,
     mut players: Query<(&mut Player, &mut Transform)>,
+    net_seed: Option<Res<NetSeed>>,
+    net_mode: Res<NetworkMode>,
 ) {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-
     turn.round += 1;
+
+    let mut rng: Box<dyn RngCore> = if net_mode.is_network() {
+        let base = net_seed.map(|s| s.base).unwrap_or(0);
+        Box::new(StdRng::seed_from_u64(base ^ turn.round as u64))
+    } else {
+        Box::new(rand::thread_rng())
+    };
 
     // Randomize player Y positions each round
     for (player, mut transform) in players.iter_mut() {

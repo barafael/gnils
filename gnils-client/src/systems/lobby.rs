@@ -21,9 +21,6 @@ pub struct LobbyPlugin;
 
 impl Plugin for LobbyPlugin {
     fn build(&self, app: &mut App) {
-        #[cfg(not(target_arch = "wasm32"))]
-        app.init_resource::<HostServerState>();
-
         // MainMenu: full navigation
         app.add_systems(OnEnter(GamePhase::MainMenu), spawn_lobby_ui);
         app.add_systems(OnExit(GamePhase::MainMenu), despawn_lobby_ui);
@@ -43,13 +40,6 @@ impl Plugin for LobbyPlugin {
             Update,
             (update_lobby_display, cancel_connection_input)
                 .run_if(in_state(GamePhase::Connecting).or(in_state(GamePhase::WaitingForOpponent))),
-        );
-
-        // Native-only: poll the background thread for cert hash
-        #[cfg(not(target_arch = "wasm32"))]
-        app.add_systems(
-            Update,
-            poll_host_server.run_if(in_state(GamePhase::MainMenu)),
         );
     }
 }
@@ -87,7 +77,7 @@ fn despawn_lobby_ui(mut commands: Commands, q: Query<Entity, With<LobbyUi>>) {
 fn update_lobby_display(
     mut commands: Commands,
     lobby: Res<LobbyMenu>,
-    join_addr: Res<JoinAddress>,
+    join: Res<JoinRoom>,
     settings: Res<GameSettings>,
     phase: Res<State<GamePhase>>,
     time: Res<Time>,
@@ -96,7 +86,7 @@ fn update_lobby_display(
 ) {
     let in_join = *phase.get() == GamePhase::MainMenu && lobby.screen == LobbyScreen::Join;
     if !lobby.is_changed()
-        && !join_addr.is_changed()
+        && !join.is_changed()
         && !settings.is_changed()
         && !phase.is_changed()
         && !in_join
@@ -115,7 +105,7 @@ fn update_lobby_display(
         " "
     };
 
-    for line in build_lines(&lobby, &join_addr, &settings, phase.get(), cursor) {
+    for line in build_lines(&lobby, &join, &settings, phase.get(), cursor) {
         let child = commands
             .spawn((
                 LobbyUiChild,
@@ -179,7 +169,7 @@ impl UiLine {
 
 fn build_lines(
     lobby: &LobbyMenu,
-    join_addr: &JoinAddress,
+    join: &JoinRoom,
     settings: &GameSettings,
     phase: &GamePhase,
     cursor: &str,
@@ -188,12 +178,14 @@ fn build_lines(
         GamePhase::Connecting => {
             return vec![
                 UiLine::title("Connecting..."),
+                UiLine::dim(format!("Room: {}", join.text)),
                 UiLine::dim("Press Escape to cancel"),
             ];
         }
         GamePhase::WaitingForOpponent => {
             return vec![
                 UiLine::title("Waiting for opponent..."),
+                UiLine::dim(format!("Room: {}", join.text)),
                 UiLine::dim("Press Escape to cancel"),
             ];
         }
@@ -221,10 +213,7 @@ fn build_lines(
         }
 
         LobbyScreen::NetworkSub => {
-            #[cfg(not(target_arch = "wasm32"))]
             const OPTS: &[&str] = &["Host", "Join", "Back"];
-            #[cfg(target_arch = "wasm32")]
-            const OPTS: &[&str] = &["Join", "Back"];
             let mut v = vec![UiLine::title("NETWORK"), UiLine::gap()];
             for (i, o) in OPTS.iter().enumerate() {
                 let t = if i == lobby.selected {
@@ -239,52 +228,23 @@ fn build_lines(
             v
         }
 
-        LobbyScreen::Host => {
-            let mut v = vec![UiLine::title("HOSTING"), UiLine::gap()];
-            if lobby.server_spawned {
-                v.push(UiLine::info(format!(
-                    "Address:   127.0.0.1:{}",
-                    gnils_protocol::SERVER_PORT
-                )));
-                if lobby.cert_hash.is_empty() {
-                    v.push(UiLine::dim("Reading certificate hash..."));
-                } else {
-                    v.push(UiLine::info(format!("Cert hash: {}", &lobby.cert_hash)));
-                }
-                v.push(UiLine::gap());
-                v.push(UiLine::dim("Share address + cert with opponent"));
-                v.push(UiLine::dim("Connecting..."));
-            } else {
-                v.push(UiLine::dim("Starting server..."));
-            }
-            v.push(UiLine::gap());
-            v.push(UiLine::dim("Escape to cancel"));
-            v
-        }
-
         LobbyScreen::Join => {
-            let addr = if join_addr.text.is_empty() {
-                "127.0.0.1:5888"
+            let room = if join.text.is_empty() {
+                "dev-room"
             } else {
-                &join_addr.text
+                &join.text
             };
-            let addr_line = format!(
-                "Address:   {}{}",
-                addr,
+            let room_line = format!(
+                "Room:   {}{}",
+                room,
                 if lobby.selected == 0 { cursor } else { "" }
-            );
-            let cert_line = format!(
-                "Cert hash: {}{}",
-                join_addr.cert_hash,
-                if lobby.selected == 1 { cursor } else { "" }
             );
             vec![
                 UiLine::title("JOIN GAME"),
                 UiLine::gap(),
-                UiLine::info(addr_line),
-                UiLine::info(cert_line),
+                UiLine::info(room_line),
                 UiLine::gap(),
-                UiLine::dim("Tab to switch field   Enter to connect   Escape back"),
+                UiLine::dim("Type room name   Enter to join   Escape back"),
             ]
         }
 
@@ -346,11 +306,13 @@ fn lobby_keyboard_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut key_events: MessageReader<KeyboardInput>,
     mut lobby: ResMut<LobbyMenu>,
-    mut join_addr: ResMut<JoinAddress>,
+    mut join: ResMut<JoinRoom>,
     mut settings: ResMut<GameSettings>,
     mut next: ResMut<NextState<GamePhase>>,
     mut net_mode: ResMut<NetworkMode>,
+    #[cfg_attr(target_arch = "wasm32", allow(unused_variables, unused_mut))]
     mut exit: MessageWriter<AppExit>,
+    mut commands: Commands,
 ) {
     let just = |k: KeyCode| keys.just_pressed(k);
 
@@ -394,10 +356,7 @@ fn lobby_keyboard_input(
         }
 
         LobbyScreen::NetworkSub => {
-            #[cfg(not(target_arch = "wasm32"))]
             const N: usize = 3;
-            #[cfg(target_arch = "wasm32")]
-            const N: usize = 2;
             if just(KeyCode::ArrowDown) {
                 lobby.selected = (lobby.selected + 1) % N;
             }
@@ -409,13 +368,13 @@ fn lobby_keyboard_input(
                 lobby.selected = 1;
             }
             if just(KeyCode::Enter) || just(KeyCode::Space) {
-                #[cfg(not(target_arch = "wasm32"))]
                 match lobby.selected {
                     0 => {
-                        lobby.screen = LobbyScreen::Host;
-                        lobby.selected = 0;
-                        lobby.server_spawned = false;
-                        lobby.cert_hash.clear();
+                        // Host: open the socket for the CLI/URL room and wait.
+                        let room = gnils_net::room_id();
+                        join.text = room.clone();
+                        gnils_net::open_socket_for(&mut commands, room);
+                        next.set(GamePhase::Connecting);
                     }
                     1 => {
                         lobby.screen = LobbyScreen::Join;
@@ -427,25 +386,6 @@ fn lobby_keyboard_input(
                     }
                     _ => {}
                 }
-                #[cfg(target_arch = "wasm32")]
-                match lobby.selected {
-                    0 => {
-                        lobby.screen = LobbyScreen::Join;
-                        lobby.selected = 0;
-                    }
-                    1 => {
-                        lobby.screen = LobbyScreen::Main;
-                        lobby.selected = 1;
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        LobbyScreen::Host => {
-            if just(KeyCode::Escape) {
-                lobby.screen = LobbyScreen::NetworkSub;
-                lobby.selected = 0;
             }
         }
 
@@ -455,34 +395,29 @@ fn lobby_keyboard_input(
                 lobby.selected = 1;
                 return;
             }
-            if just(KeyCode::Tab) {
-                lobby.selected = 1 - lobby.selected;
-                return;
-            }
             if just(KeyCode::Enter) {
-                if join_addr.text.is_empty() {
-                    join_addr.text = "127.0.0.1:5888".to_string();
-                }
+                let room = if join.text.is_empty() {
+                    "dev-room".to_string()
+                } else {
+                    join.text.clone()
+                };
+                join.text = room.clone();
+                gnils_net::open_socket_for(&mut commands, room);
                 next.set(GamePhase::Connecting);
                 return;
             }
-            let field: &mut String = if lobby.selected == 0 {
-                &mut join_addr.text
-            } else {
-                &mut join_addr.cert_hash
-            };
             for ev in key_events.read() {
                 if ev.state != bevy::input::ButtonState::Pressed {
                     continue;
                 }
                 match ev.key_code {
                     KeyCode::Backspace => {
-                        field.pop();
+                        join.text.pop();
                     }
                     _ => {
                         if let bevy::input::keyboard::Key::Character(ref s) = ev.logical_key {
-                            if field.len() < 64 {
-                                field.push_str(s.as_str());
+                            if join.text.len() < 64 {
+                                join.text.push_str(s.as_str());
                             }
                         }
                     }
@@ -537,66 +472,18 @@ fn lobby_keyboard_input(
     }
 }
 
-// ── Host flow (native only) ───────────────────────────────────────────────────
+// ── Connection cancellation ──────────────────────────────────────────────────
 
-#[cfg(not(target_arch = "wasm32"))]
-#[derive(Resource, Default)]
-pub struct HostServerState {
-    pub cert_rx: Option<std::sync::Mutex<std::sync::mpsc::Receiver<String>>>,
-    pub child: Option<std::process::Child>,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn poll_host_server(
-    mut lobby: ResMut<LobbyMenu>,
-    mut join_addr: ResMut<JoinAddress>,
-    mut next: ResMut<NextState<GamePhase>>,
-    mut host_state: ResMut<HostServerState>,
-) {
-    if lobby.screen != LobbyScreen::Host {
-        return;
-    }
-
-    if !lobby.server_spawned {
-        use crate::systems::network::spawn_server_process;
-        if let Some(mut child) = spawn_server_process() {
-            let (tx, rx) = std::sync::mpsc::channel();
-            if let Some(stdout) = child.stdout.take() {
-                std::thread::spawn(move || {
-                    use crate::systems::network::read_server_cert_hash;
-                    if let Some(hash) = read_server_cert_hash(stdout) {
-                        let _ = tx.send(hash);
-                    }
-                });
-            }
-            host_state.child = Some(child);
-            host_state.cert_rx = Some(std::sync::Mutex::new(rx));
-            lobby.server_spawned = true;
-        }
-        return;
-    }
-
-    if lobby.cert_hash.is_empty() {
-        if let Some(rx_mutex) = &host_state.cert_rx {
-            if let Ok(rx) = rx_mutex.try_lock() {
-                if let Ok(hash) = rx.try_recv() {
-                    lobby.cert_hash = hash.clone();
-                    join_addr.text = format!("127.0.0.1:{}", gnils_protocol::SERVER_PORT);
-                    join_addr.cert_hash = hash;
-                    next.set(GamePhase::Connecting);
-                }
-            }
-        }
-    }
-}
-
-/// Escape cancels a pending connection and returns to the main menu.
+/// Escape cancels a pending connection, closes the socket, and returns to the
+/// main menu.
 fn cancel_connection_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut next: ResMut<NextState<GamePhase>>,
     mut net_mode: ResMut<NetworkMode>,
+    mut commands: Commands,
 ) {
     if keys.just_pressed(KeyCode::Escape) {
+        crate::systems::network::close_socket(&mut commands);
         *net_mode = NetworkMode::Local;
         next.set(GamePhase::MainMenu);
     }

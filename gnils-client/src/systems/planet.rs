@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use gnils_protocol::{PlanetData, generate_planets};
-use rand::thread_rng;
+use rand::rngs::StdRng;
+use rand::{RngCore, SeedableRng};
 
 use crate::components::Planet;
 use crate::resources::*;
@@ -10,12 +11,24 @@ pub fn spawn_planets(
     assets: Res<GameAssets>,
     settings: Res<GameSettings>,
     existing_planets: Query<Entity, With<Planet>>,
+    turn: Res<TurnState>,
+    net_seed: Option<Res<NetSeed>>,
+    net_mode: Res<NetworkMode>,
 ) {
     for entity in existing_planets.iter() {
         commands.entity(entity).despawn();
     }
 
-    let mut rng = thread_rng();
+    // In network mode the layout comes from the shared seed so both peers
+    // generate identical planets. Runs before `round_setup` increments the
+    // round, so this uses the pre-increment round value (deterministic on both
+    // peers either way).
+    let mut rng: Box<dyn RngCore> = if net_mode.is_network() {
+        let base = net_seed.map(|s| s.base).unwrap_or(0);
+        Box::new(StdRng::seed_from_u64(base ^ turn.round as u64))
+    } else {
+        Box::new(rand::thread_rng())
+    };
     let planets = generate_planets(&settings.to_protocol(), &mut rng);
     spawn_planet_entities(&mut commands, &assets, &planets);
 }

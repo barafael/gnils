@@ -3,11 +3,6 @@ use serde::{Deserialize, Serialize};
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-pub const SERVER_PORT: u16 = 5888;
-/// "gnils" encoded as a u64
-pub const PROTOCOL_ID: u64 = 0x0000_676E_696C_73;
-pub const PRIVATE_KEY: [u8; 32] = [0u8; 32];
-
 /// Distance from ship center to gun barrel tip (world units / pixels).
 pub const GUN_OFFSET_P1: f64 = 22.0;
 pub const GUN_OFFSET_P2: f64 = 23.0;
@@ -112,63 +107,6 @@ impl Default for GameSettingsData {
             max_flight: MAX_FLIGHT,
         }
     }
-}
-
-/// Describes the outcome of a missile impact.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum HitResult {
-    Planet,
-    Blackhole,
-    Ship {
-        hit_player: u8,
-        shooter: u8,
-        self_hit: bool,
-    },
-    Timeout,
-}
-
-// ── Network messages ───────────────────────────────────────────────────────
-
-/// Messages sent from client → server.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ClientMsg {
-    Ready,
-    AimUpdate { angle: f64, power: f64 },
-    FireShot { angle: f64, power: f64 },
-}
-
-/// Messages sent from server → client.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ServerMsg {
-    GameStart {
-        your_player_id: u8,
-        settings: GameSettingsData,
-    },
-    RoundSetup {
-        round: u32,
-        active_player: u8,
-        planets: Vec<PlanetData>,
-        player_y: [f64; 2],
-    },
-    OpponentAim { angle: f64, power: f64 },
-    MissileUpdate {
-        snapshot: BodySnapshot,
-        trail_color: (u8, u8, u8),
-    },
-    ParticleSpawn {
-        pos: (f32, f32),
-        count: u32,
-        size: u8,
-    },
-    ShotMissed {
-        next_player: u8,
-    },
-    RoundResult {
-        hit: HitResult,
-        scores: [i32; 2],
-        game_over: bool,
-    },
-    OpponentDisconnected,
 }
 
 // ── Pure physics / game-logic functions ────────────────────────────────────

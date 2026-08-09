@@ -1,13 +1,12 @@
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, WindowMode};
 
-use gnils_protocol::ClientMsg;
-use lightyear::prelude::MessageSender;
+use gnils_net::{GameEvent, NetMsg};
 
 use crate::components::*;
 use crate::constants::*;
 use crate::resources::*;
-use crate::systems::network::send_fire_shot;
+use crate::systems::network::PendingEdits;
 
 pub fn aiming_input(
     keys: Res<ButtonInput<KeyCode>>,
@@ -15,7 +14,7 @@ pub fn aiming_input(
     mut players: Query<&mut Player>,
     menu: Res<MenuOpen>,
     net_mode: Res<NetworkMode>,
-    mut senders: Query<&mut MessageSender<ClientMsg>>,
+    mut pending: ResMut<PendingEdits>,
 ) {
     if turn.round_over || turn.firing || menu.open {
         return;
@@ -78,7 +77,13 @@ pub fn aiming_input(
 
         if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) {
             if net_mode.is_network() {
-                send_fire_shot(player.angle, player.power, &mut senders);
+                // Submit the shot to the host; the `Sequenced` echo arrives on
+                // both peers, which then launch identically.
+                pending.outgoing_broadcast.push(NetMsg::Game(GameEvent::ShotFired {
+                    player: current,
+                    angle: player.angle,
+                    power: player.power,
+                }));
             }
             turn.firing = true;
         }
@@ -169,6 +174,7 @@ pub fn menu_nav_input(
     mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
     mut window_q: Query<&mut Window>,
     mut net_mode: ResMut<NetworkMode>,
+    mut commands: Commands,
 ) {
     if !menu.open {
         return;
@@ -199,6 +205,11 @@ pub fn menu_nav_input(
         }
         1 => {
             menu.open = false;
+            if net_mode.is_network() {
+                // Restarting a round mid-network would desync the peers; the
+                // network game auto-advances on its own.
+                return;
+            }
             for mut player in players.iter_mut() {
                 player.score = 0;
             }
@@ -216,6 +227,7 @@ pub fn menu_nav_input(
         2 => {
             menu.open = false;
             *net_mode = NetworkMode::Local;
+            crate::systems::network::close_socket(&mut commands);
             next_state.set(GamePhase::MainMenu);
         }
         3 => {
@@ -284,7 +296,7 @@ pub fn menu_nav_input(
 }
 
 /// Shared reset for starting a fresh round.
-fn reset_for_new_round(
+pub(crate) fn reset_for_new_round(
     turn: &mut TurnState,
     players: &mut Query<&mut Player>,
     missile_q: &mut Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
@@ -316,4 +328,23 @@ fn reset_for_new_round(
         marker.active = false;
         *vis = Visibility::Hidden;
     }
+}
+
+/// Full game reset: zero scores/rounds and re-prep the ships for a fresh game
+/// (used when a network `StartGame` applies).
+pub(crate) fn reset_for_game_start(
+    turn: &mut TurnState,
+    players: &mut Query<&mut Player>,
+    missile_q: &mut Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
+    trail_canvas: &TrailCanvas,
+    images: &mut Assets<Image>,
+    settings: &GameSettings,
+) {
+    for mut player in players.iter_mut() {
+        player.score = 0;
+    }
+    turn.round = 0;
+    turn.game_over = false;
+    reset_for_new_round(turn, players, missile_q, trail_canvas, images);
+    turn.show_planets = if settings.invisible { 100.0 } else { 0.0 };
 }
