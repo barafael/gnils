@@ -10,6 +10,7 @@ use crate::systems::network::PendingEdits;
 
 pub fn aiming_input(
     keys: Res<ButtonInput<KeyCode>>,
+    time: Res<Time>,
     mut turn: ResMut<TurnState>,
     mut players: Query<&mut Player>,
     menu: Res<MenuOpen>,
@@ -19,6 +20,12 @@ pub fn aiming_input(
     if turn.round_over || turn.firing || menu.open {
         return;
     }
+
+    // Frame-rate independent aim: the base steps assume 60 FPS and are scaled
+    // by elapsed time so the per-second rate is identical at any refresh rate
+    // (the wasm build runs at the browser's rAF rate, often 120+ Hz). Clamped
+    // to avoid a huge jump after a stall.
+    let dt60 = (time.delta_secs_f64() * 60.0).min(4.0);
 
     let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
@@ -33,6 +40,8 @@ pub fn aiming_input(
     } else {
         (10.0, 2.0_f64.to_radians())
     };
+    let power_step = power_step * dt60;
+    let angle_step = angle_step * dt60;
 
     let current = turn.current_player;
 
