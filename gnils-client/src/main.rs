@@ -22,6 +22,7 @@ fn main() {
                 title: "Slingshot".into(),
                 resolution: WindowResolution::new(WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32),
                 resizable: false,
+                canvas: Some("#game".into()),
                 ..default()
             }),
             ..default()
