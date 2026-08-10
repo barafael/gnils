@@ -38,8 +38,8 @@ pub fn spawn_particles(
                 rng.gen_range(PARTICLE_10_MIN_SPEED..=PARTICLE_10_MAX_SPEED)
             };
 
-            let vx = 0.1 * speed * (angle.to_radians()).sin();
-            let vy = 0.1 * speed * (angle.to_radians()).cos();
+            let vx = 0.1 * speed * angle.sin();
+            let vy = 0.1 * speed * angle.cos();
 
             let pos = (request.pos.x as f64, request.pos.y as f64);
 

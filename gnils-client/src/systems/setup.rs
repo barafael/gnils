@@ -114,7 +114,7 @@ pub fn setup_players(mut commands: Commands, blended: Res<BlendedShipImages>) {
             shot: false,
             color_rgb: PLAYER1_COLOR,
             gun_offset: GUN_OFFSET_P1,
-            explosion_frame: 0,
+            explosion_progress: 0.0,
         },
     ));
 
@@ -131,7 +131,7 @@ pub fn setup_players(mut commands: Commands, blended: Res<BlendedShipImages>) {
             shot: false,
             color_rgb: PLAYER2_COLOR,
             gun_offset: GUN_OFFSET_P2,
-            explosion_frame: 0,
+            explosion_progress: 0.0,
         },
     ));
 }

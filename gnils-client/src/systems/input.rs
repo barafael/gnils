@@ -11,21 +11,21 @@ use crate::systems::network::PendingEdits;
 pub fn aiming_input(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
+    settings: Res<GameSettings>,
     mut turn: ResMut<TurnState>,
     mut players: Query<&mut Player>,
     menu: Res<MenuOpen>,
     net_mode: Res<NetworkMode>,
     mut pending: ResMut<PendingEdits>,
+    mut repeat: ResMut<AimRepeat>,
 ) {
     if turn.round_over || turn.firing || menu.open {
+        repeat.up.delay = None;
+        repeat.down.delay = None;
+        repeat.left.delay = None;
+        repeat.right.delay = None;
         return;
     }
-
-    // Frame-rate independent aim: the base steps assume 60 FPS and are scaled
-    // by elapsed time so the per-second rate is identical at any refresh rate
-    // (the wasm build runs at the browser's rAF rate, often 120+ Hz). Clamped
-    // to avoid a huge jump after a stall.
-    let dt60 = (time.delta_secs_f64() * 60.0).min(4.0);
 
     let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
@@ -40,8 +40,6 @@ pub fn aiming_input(
     } else {
         (10.0, 2.0_f64.to_radians())
     };
-    let power_step = power_step * dt60;
-    let angle_step = angle_step * dt60;
 
     let current = turn.current_player;
 
@@ -52,18 +50,26 @@ pub fn aiming_input(
         }
     }
 
+    let dt = time.delta_secs();
+    let fire_up = update_repeat(&mut repeat.up, KeyCode::ArrowUp, &keys, dt);
+    let fire_down = update_repeat(&mut repeat.down, KeyCode::ArrowDown, &keys, dt);
+    let fire_left = update_repeat(&mut repeat.left, KeyCode::ArrowLeft, &keys, dt);
+    let fire_right = update_repeat(&mut repeat.right, KeyCode::ArrowRight, &keys, dt);
+
     for mut player in players.iter_mut() {
         if player.id != current {
             continue;
         }
 
-        if keys.pressed(KeyCode::ArrowUp) {
-            player.power = (player.power + power_step).min(MAX_POWER);
+        if !settings.fixed_power {
+            if fire_up {
+                player.power = (player.power + power_step).min(MAX_POWER);
+            }
+            if fire_down {
+                player.power = (player.power - power_step).max(0.0);
+            }
         }
-        if keys.pressed(KeyCode::ArrowDown) {
-            player.power = (player.power - power_step).max(0.0);
-        }
-        if keys.pressed(KeyCode::ArrowLeft) {
+        if fire_left {
             player.angle += angle_step;
             player.rel_rot += angle_step;
             if player.angle >= std::f64::consts::TAU {
@@ -73,7 +79,7 @@ pub fn aiming_input(
                 player.rel_rot -= std::f64::consts::TAU;
             }
         }
-        if keys.pressed(KeyCode::ArrowRight) {
+        if fire_right {
             player.angle -= angle_step;
             player.rel_rot -= angle_step;
             if player.angle < 0.0 {
@@ -86,8 +92,6 @@ pub fn aiming_input(
 
         if keys.just_pressed(KeyCode::Space) || keys.just_pressed(KeyCode::Enter) {
             if net_mode.is_network() {
-                // Submit the shot to the host; the `Sequenced` echo arrives on
-                // both peers, which then launch identically.
                 pending.outgoing_broadcast.push(NetMsg::Game(GameEvent::ShotFired {
                     player: current,
                     angle: player.angle,
@@ -99,8 +103,36 @@ pub fn aiming_input(
     }
 }
 
+/// Discrete key-repeat helper matching the original `pygame.key.set_repeat(250, 30)`.
+/// Fires immediately on press, then after `KEY_REPEAT_DELAY` silence, repeats every
+/// `KEY_REPEAT_INTERVAL`.
+fn update_repeat(
+    timer: &mut KeyRepeatTimer,
+    key: KeyCode,
+    keys: &ButtonInput<KeyCode>,
+    dt: f32,
+) -> bool {
+    if keys.just_pressed(key) {
+        timer.delay = Some(KEY_REPEAT_DELAY);
+        return true;
+    }
+    if keys.pressed(key) {
+        if let Some(ref mut d) = timer.delay {
+            *d -= dt;
+            if *d <= 0.0 {
+                *d = KEY_REPEAT_INTERVAL;
+                return true;
+            }
+        }
+    } else {
+        timer.delay = None;
+    }
+    false
+}
+
 pub fn round_over_input(
     keys: Res<ButtonInput<KeyCode>>,
+    settings: Res<GameSettings>,
     mut turn: ResMut<TurnState>,
     mut players: Query<&mut Player>,
     mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
@@ -137,7 +169,13 @@ pub fn round_over_input(
                 p2_score = player.score;
             }
         }
-        turn.current_player = if p1_score <= p2_score { 1 } else { 2 };
+        turn.current_player = if p1_score < p2_score {
+            1
+        } else if p2_score < p1_score {
+            2
+        } else {
+            turn.other_player()
+        };
 
         reset_for_new_round(
             &mut turn,
@@ -145,6 +183,7 @@ pub fn round_over_input(
             &mut missile_q,
             &trail_canvas,
             &mut images,
+            &settings,
         );
         next_state.set(GamePhase::RoundSetup);
     }
@@ -189,7 +228,7 @@ pub fn menu_nav_input(
         return;
     }
 
-    const N_ITEMS: usize = 11;
+    const N_ITEMS: usize = 12;
 
     if keys.just_pressed(KeyCode::ArrowDown) {
         menu.selected = (menu.selected + 1) % N_ITEMS;
@@ -230,6 +269,7 @@ pub fn menu_nav_input(
                 &mut missile_q,
                 &trail_canvas,
                 &mut images,
+                &settings,
             );
             next_state.set(GamePhase::RoundSetup);
         }
@@ -300,6 +340,9 @@ pub fn menu_nav_input(
                 };
             }
         }
+        11 => {
+            settings.random = !settings.random;
+        }
         _ => {}
     }
 }
@@ -311,6 +354,7 @@ pub(crate) fn reset_for_new_round(
     missile_q: &mut Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
     trail_canvas: &TrailCanvas,
     images: &mut Assets<Image>,
+    settings: &GameSettings,
 ) {
     if let Some(image) = images.get_mut(&trail_canvas.image_handle) {
         crate::trail::clear_trail(image);
@@ -321,10 +365,14 @@ pub(crate) fn reset_for_new_round(
     turn.show_round = 100.0;
 
     for mut player in players.iter_mut() {
-        player.power = 100.0;
+        player.power = if settings.fixed_power {
+            FIXED_POWER_VALUE
+        } else {
+            100.0
+        };
         player.shot = false;
         player.attempts = 0;
-        player.explosion_frame = 0;
+        player.explosion_progress = 0.0;
         player.rel_rot = 0.0;
         player.angle = if player.id == 1 {
             0.0
@@ -354,6 +402,6 @@ pub(crate) fn reset_for_game_start(
     }
     turn.round = 0;
     turn.game_over = false;
-    reset_for_new_round(turn, players, missile_q, trail_canvas, images);
+    reset_for_new_round(turn, players, missile_q, trail_canvas, images, settings);
     turn.show_planets = if settings.invisible { 100.0 } else { 0.0 };
 }

@@ -5,11 +5,12 @@ use crate::constants::*;
 use crate::resources::*;
 
 /// Update bounce border animation.
-pub fn update_bounce_animation(mut bounce: ResMut<BounceAnimation>) {
-    bounce.count += bounce.inc;
+pub fn update_bounce_animation(time: Res<Time>, mut bounce: ResMut<BounceAnimation>) {
+    let dt30 = time.delta_secs() * 30.0;
+    bounce.count += bounce.inc * dt30;
     if bounce.count > 255.0 || bounce.count < 125.0 {
         bounce.inc *= -1.0;
-        bounce.count += 2.0 * bounce.inc;
+        bounce.count += 2.0 * bounce.inc * dt30;
     }
 }
 
@@ -375,6 +376,7 @@ pub fn update_menu_display(
         ),
         ("", None),
         ("Fullscreen", Some(bool_str(settings.fullscreen))),
+        ("Random Mode", Some(bool_str(settings.random))),
     ];
 
     // Map menu.selected index to display row index (skip separators)

@@ -87,8 +87,9 @@ pub fn draw_aim_line(
 }
 
 /// Update ship explosion animation for hit players.
-/// Uses half-frame increments since this runs at ~60fps but Python runs at 30fps.
+/// Scaled by delta time to match the original 30fps cadence at any framerate.
 pub fn update_ship_explosion(
+    time: Res<Time>,
     mut players: Query<(&mut Player, &mut Sprite, &mut Transform)>,
     assets: Res<GameAssets>,
 ) {
@@ -97,13 +98,15 @@ pub fn update_ship_explosion(
             continue;
         }
 
-        // Increment at half speed to match 30fps original
-        player.explosion_frame += 1;
-        let e = player.explosion_frame as f64 * 0.5;
+        let dt30 = time.delta_secs_f64() * 30.0;
+        let just_started = player.explosion_progress == 0.0;
+        player.explosion_progress += dt30;
+        let e = player.explosion_progress;
+
         let s = e * (6.0 - e) * 100.0 / 9.0;
 
         if s > 0.0 {
-            if player.explosion_frame == 1 {
+            if just_started {
                 sprite.image = assets.explosion.clone();
                 sprite.texture_atlas = None;
                 transform.rotation = Quat::IDENTITY;

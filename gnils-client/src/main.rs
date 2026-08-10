@@ -42,6 +42,7 @@ fn main() {
         .insert_resource(MissileImpactQueue::default())
         .insert_resource(RoundResult::default())
         .insert_resource(MenuOpen::default())
+        .insert_resource(AimRepeat::default())
         .insert_resource(NetworkMode::default())
         .insert_resource(NetSeed::default())
         .insert_resource(JoinRoom::default())
@@ -95,6 +96,7 @@ fn main() {
                 systems::physics::missile_gravity,
                 systems::missile::draw_missile_trail,
                 systems::physics::particle_gravity,
+                systems::physics::particle_bounce,
                 systems::collision::particle_collision,
                 systems::particles::cleanup_particles,
             )
@@ -126,6 +128,7 @@ fn main() {
             FixedUpdate,
             (
                 systems::physics::particle_gravity,
+                systems::physics::particle_bounce,
                 systems::collision::particle_collision,
                 systems::particles::cleanup_particles,
             )

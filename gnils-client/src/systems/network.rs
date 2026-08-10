@@ -494,6 +494,7 @@ fn broadcast_aim(
 /// round. After game over, reset scores/round and re-seed for a new game.
 fn network_auto_advance(
     time: Res<Time>,
+    settings: Res<GameSettings>,
     mut turn: ResMut<TurnState>,
     mut players: Query<&mut Player>,
     mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
@@ -542,7 +543,13 @@ fn network_auto_advance(
             p2_score = player.score;
         }
     }
-    turn.current_player = if p1_score <= p2_score { 1 } else { 2 };
+    turn.current_player = if p1_score < p2_score {
+        1
+    } else if p2_score < p1_score {
+        2
+    } else {
+        turn.other_player()
+    };
 
     reset_for_new_round(
         &mut turn,
@@ -550,6 +557,7 @@ fn network_auto_advance(
         &mut missile_q,
         &trail_canvas,
         &mut images,
+        &settings,
     );
     next_state.set(GamePhase::RoundSetup);
 }

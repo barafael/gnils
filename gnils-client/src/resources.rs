@@ -82,6 +82,7 @@ pub struct GameSettings {
     pub max_rounds: u32,
     pub max_flight: i32,
     pub fullscreen: bool,
+    pub random: bool,
 }
 
 impl Default for GameSettings {
@@ -96,6 +97,7 @@ impl Default for GameSettings {
             max_rounds: 3,
             max_flight: MAX_FLIGHT,
             fullscreen: false,
+            random: false,
         }
     }
 }
@@ -111,6 +113,7 @@ impl GameSettings {
             particles_enabled: self.particles_enabled,
             max_rounds: self.max_rounds,
             max_flight: self.max_flight,
+            random: self.random,
         }
     }
 
@@ -123,6 +126,7 @@ impl GameSettings {
         self.particles_enabled = data.particles_enabled;
         self.max_rounds = data.max_rounds;
         self.max_flight = data.max_flight;
+        self.random = data.random;
     }
 }
 
@@ -252,6 +256,22 @@ pub struct ParticleSpawnRequest {
 #[derive(Resource, Default)]
 pub struct MissileImpactQueue {
     pub impacts: Vec<MissileImpact>,
+}
+
+/// Per-key auto-repeat timers for aiming (matching the original's
+/// `pygame.key.set_repeat(250, 30)` discrete-repeat model).
+#[derive(Resource, Default)]
+pub struct AimRepeat {
+    pub up: KeyRepeatTimer,
+    pub down: KeyRepeatTimer,
+    pub left: KeyRepeatTimer,
+    pub right: KeyRepeatTimer,
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct KeyRepeatTimer {
+    /// `None` = key not held; `Some(secs)` = countdown until next step fires.
+    pub delay: Option<f32>,
 }
 
 pub struct MissileImpact {

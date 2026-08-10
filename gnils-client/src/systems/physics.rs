@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use gnils_protocol::{BOUNCE_X_MAX, BOUNCE_X_MIN, BOUNCE_Y_MAX, BOUNCE_Y_MIN};
+
 use crate::components::*;
 use crate::resources::*;
 
@@ -25,6 +27,47 @@ fn apply_gravity(body: &mut GravityBody, planets: &Query<&Planet>) {
         &mut body.flight,
         &planet_data,
     );
+}
+
+/// Apply bounce reflection to a GravityBody at the screen edges.
+/// Used by both missiles and particles when BOUNCE mode is on.
+pub fn bounce_gravity_body(body: &mut GravityBody) {
+    if body.pos.0 > BOUNCE_X_MAX {
+        let d = body.pos.0 - body.last_pos.0;
+        if d.abs() > 1e-10 {
+            body.pos.1 = body.last_pos.1
+                + (body.pos.1 - body.last_pos.1) * (BOUNCE_X_MAX - body.last_pos.0) / d;
+        }
+        body.pos.0 = BOUNCE_X_MAX;
+        body.velocity.0 = -body.velocity.0;
+    }
+    if body.pos.0 < BOUNCE_X_MIN {
+        let d = body.last_pos.0 - body.pos.0;
+        if d.abs() > 1e-10 {
+            body.pos.1 = body.last_pos.1
+                + (body.pos.1 - body.last_pos.1) * (body.last_pos.0 - BOUNCE_X_MIN) / d;
+        }
+        body.pos.0 = BOUNCE_X_MIN;
+        body.velocity.0 = -body.velocity.0;
+    }
+    if body.pos.1 > BOUNCE_Y_MAX {
+        let d = body.pos.1 - body.last_pos.1;
+        if d.abs() > 1e-10 {
+            body.pos.0 = body.last_pos.0
+                + (body.pos.0 - body.last_pos.0) * (BOUNCE_Y_MAX - body.last_pos.1) / d;
+        }
+        body.pos.1 = BOUNCE_Y_MAX;
+        body.velocity.1 = -body.velocity.1;
+    }
+    if body.pos.1 < BOUNCE_Y_MIN {
+        let d = body.last_pos.1 - body.pos.1;
+        if d.abs() > 1e-10 {
+            body.pos.0 = body.last_pos.0
+                + (body.pos.0 - body.last_pos.0) * (body.last_pos.1 - BOUNCE_Y_MIN) / d;
+        }
+        body.pos.1 = BOUNCE_Y_MIN;
+        body.velocity.1 = -body.velocity.1;
+    }
 }
 
 // ── ECS systems ────────────────────────────────────────────────────────────
@@ -53,6 +96,19 @@ pub fn particle_gravity(
 ) {
     for (mut body, _) in particles.iter_mut() {
         apply_gravity(&mut body, &planets);
+    }
+}
+
+/// Bounce particles off screen edges in BOUNCE mode.
+pub fn particle_bounce(
+    mut particles: Query<&mut GravityBody, With<ParticleMarker>>,
+    settings: Res<GameSettings>,
+) {
+    if !settings.bounce {
+        return;
+    }
+    for mut body in particles.iter_mut() {
+        bounce_gravity_body(&mut body);
     }
 }
 

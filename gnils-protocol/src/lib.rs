@@ -57,6 +57,15 @@ pub const BLACKHOLE_MASS_MAX: f64 = 700.0;
 pub const PLANET_OVERLAP_SCALE: f64 = 1.5;
 pub const PLANET_OVERLAP_MASS_K: f64 = 0.1;
 
+// ── Bounce boundaries ───────────────────────────────────────────────────────
+// The original bounces at pixel-grid edges 0 and 799/599 (800x600 screen).
+// In center-origin Y-up coords this is -400..399 / -300..299.
+
+pub const BOUNCE_X_MIN: f64 = -WORLD_HALF_W; // -400 (left)
+pub const BOUNCE_X_MAX: f64 = WORLD_HALF_W - 1.0; // 399 (right)
+pub const BOUNCE_Y_MIN: f64 = -WORLD_HALF_H; // -300 (bottom)
+pub const BOUNCE_Y_MAX: f64 = WORLD_HALF_H - 1.0; // 299 (top)
+
 // ── Shared data types ──────────────────────────────────────────────────────
 
 /// Planet data as sent over the network and used in pure physics.
@@ -92,6 +101,7 @@ pub struct GameSettingsData {
     pub particles_enabled: bool,
     pub max_rounds: u32,
     pub max_flight: i32,
+    pub random: bool,
 }
 
 impl Default for GameSettingsData {
@@ -105,6 +115,7 @@ impl Default for GameSettingsData {
             particles_enabled: true,
             max_rounds: 0,
             max_flight: MAX_FLIGHT,
+            random: false,
         }
     }
 }
@@ -113,9 +124,9 @@ impl Default for GameSettingsData {
 
 pub fn is_on_screen(pos: (f64, f64)) -> bool {
     pos.0 >= -WORLD_HALF_W
-        && pos.0 <= WORLD_HALF_W
+        && pos.0 < WORLD_HALF_W
         && pos.1 >= -WORLD_HALF_H
-        && pos.1 <= WORLD_HALF_H
+        && pos.1 < WORLD_HALF_H
 }
 
 pub fn is_in_extended_range(pos: (f64, f64)) -> bool {
@@ -140,36 +151,36 @@ pub fn compute_launch_velocity(power: f64, angle: f64) -> (f64, f64) {
 }
 
 pub fn apply_bounce(m: &mut BodySnapshot) {
-    if m.pos.0 > WORLD_HALF_W {
+    if m.pos.0 > BOUNCE_X_MAX {
         let d = m.pos.0 - m.last_pos.0;
         if d.abs() > 1e-10 {
-            m.pos.1 = m.last_pos.1 + (m.pos.1 - m.last_pos.1) * (WORLD_HALF_W - m.last_pos.0) / d;
+            m.pos.1 = m.last_pos.1 + (m.pos.1 - m.last_pos.1) * (BOUNCE_X_MAX - m.last_pos.0) / d;
         }
-        m.pos.0 = WORLD_HALF_W;
+        m.pos.0 = BOUNCE_X_MAX;
         m.vel.0 = -m.vel.0;
     }
-    if m.pos.0 < -WORLD_HALF_W {
+    if m.pos.0 < BOUNCE_X_MIN {
         let d = m.last_pos.0 - m.pos.0;
         if d.abs() > 1e-10 {
-            m.pos.1 = m.last_pos.1 + (m.pos.1 - m.last_pos.1) * (m.last_pos.0 + WORLD_HALF_W) / d;
+            m.pos.1 = m.last_pos.1 + (m.pos.1 - m.last_pos.1) * (m.last_pos.0 - BOUNCE_X_MIN) / d;
         }
-        m.pos.0 = -WORLD_HALF_W;
+        m.pos.0 = BOUNCE_X_MIN;
         m.vel.0 = -m.vel.0;
     }
-    if m.pos.1 > WORLD_HALF_H {
+    if m.pos.1 > BOUNCE_Y_MAX {
         let d = m.pos.1 - m.last_pos.1;
         if d.abs() > 1e-10 {
-            m.pos.0 = m.last_pos.0 + (m.pos.0 - m.last_pos.0) * (WORLD_HALF_H - m.last_pos.1) / d;
+            m.pos.0 = m.last_pos.0 + (m.pos.0 - m.last_pos.0) * (BOUNCE_Y_MAX - m.last_pos.1) / d;
         }
-        m.pos.1 = WORLD_HALF_H;
+        m.pos.1 = BOUNCE_Y_MAX;
         m.vel.1 = -m.vel.1;
     }
-    if m.pos.1 < -WORLD_HALF_H {
+    if m.pos.1 < BOUNCE_Y_MIN {
         let d = m.last_pos.1 - m.pos.1;
         if d.abs() > 1e-10 {
-            m.pos.0 = m.last_pos.0 + (m.pos.0 - m.last_pos.0) * (m.last_pos.1 + WORLD_HALF_H) / d;
+            m.pos.0 = m.last_pos.0 + (m.pos.0 - m.last_pos.0) * (m.last_pos.1 - BOUNCE_Y_MIN) / d;
         }
-        m.pos.1 = -WORLD_HALF_H;
+        m.pos.1 = BOUNCE_Y_MIN;
         m.vel.1 = -m.vel.1;
     }
 }

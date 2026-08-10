@@ -23,7 +23,9 @@ pub fn handle_missile_impact(
         match impact.hit_type {
             HitType::Planet => {
                 info!("Missile hit planet at ({}, {})", impact.pos.x, impact.pos.y);
-                if settings.particles_enabled {
+                if settings.particles_enabled
+                    && is_on_screen((impact.pos.x as f64, impact.pos.y as f64))
+                {
                     spawn_queue.requests.push(ParticleSpawnRequest {
                         pos: impact.pos,
                         count: N_PARTICLES_10,
@@ -113,7 +115,7 @@ fn end_shot(turn: &mut TurnState) {
 pub fn round_setup(
     mut turn: ResMut<TurnState>,
     mut next_state: ResMut<NextState<GamePhase>>,
-    settings: Res<GameSettings>,
+    mut settings: ResMut<GameSettings>,
     mut players: Query<(&mut Player, &mut Transform)>,
     net_seed: Option<Res<NetSeed>>,
     net_mode: Res<NetworkMode>,
@@ -127,12 +129,28 @@ pub fn round_setup(
         Box::new(rand::thread_rng())
     };
 
+    // Random mode (network only): each round randomizes game style settings.
+    // Both peers derive the same values from the shared seed.
+    let randomize = net_mode.is_network() && settings.random;
+    if randomize {
+        settings.bounce = rng.gen_bool(0.5);
+        settings.fixed_power = rng.gen_bool(0.5);
+        settings.invisible = rng.gen_bool(0.5);
+    }
+
     // Randomize player Y positions each round
-    for (player, mut transform) in players.iter_mut() {
+    for (mut player, mut transform) in players.iter_mut() {
         let y = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
         let x = if player.id == 1 { PLAYER1_X } else { PLAYER2_X };
         transform.translation.x = x as f32;
         transform.translation.y = y as f32;
+        if randomize {
+            player.power = if settings.fixed_power {
+                FIXED_POWER_VALUE
+            } else {
+                100.0
+            };
+        }
     }
 
     if settings.invisible {

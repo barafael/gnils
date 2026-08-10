@@ -12,6 +12,8 @@ pub fn missile_collision(
     mut missile_q: Query<(&mut GravityBody, &mut MissileMarker)>,
     planets: Query<&Planet>,
     players: Query<(&Player, &Transform)>,
+    blended: Res<BlendedShipImages>,
+    images: Res<Assets<Image>>,
     mut impact_queue: ResMut<MissileImpactQueue>,
     settings: Res<GameSettings>,
     mut turn: ResMut<TurnState>,
@@ -73,26 +75,59 @@ pub fn missile_collision(
             }
         }
 
-        // Check ship collision (sub-step check like original)
+        // Check ship collision — pixel-perfect via the blended ship texture.
+        // Inverse-rotate the sub-step point into the ship's local (unrotated)
+        // frame and sample the blended image alpha, matching the original's
+        // `Player.hit()` pixel test. No grace period needed: the gun-tip
+        // pixels are transparent so a launch can't self-collide.
         for (player, transform) in players.iter() {
-            // Skip the launching player for first few ticks to avoid self-hit on launch.
-            // The original uses pixel-perfect detection which naturally avoids this since
-            // the gun tip area is transparent. We use bounding box, so we need a grace period.
-            if player.id == turn.last_player && body.flight > settings.max_flight - 5 {
-                continue;
-            }
-
             let cx = transform.translation.x as f64;
             let cy = transform.translation.y as f64;
+            let rot = player.rel_rot;
+            let cos_r = rot.cos();
+            let sin_r = rot.sin();
+            let handle = &blended.handles[(player.id - 1) as usize];
+            let img = images.get(handle);
             let half_w = SHIP_FRAME_WIDTH as f64 / 2.0;
-            let half_h = SHIP_FRAME_HEIGHT as f64 / 2.0;
+            let half_h = SHIP_FRAME_WIDTH as f64 * 33.0 / 80.0; // 16.5
 
             for i in 0..10 {
                 let px = body.last_pos.0 + i as f64 * 0.1 * body.velocity.0;
                 let py = body.last_pos.1 + i as f64 * 0.1 * body.velocity.1;
 
-                if px >= cx - half_w && px <= cx + half_w && py >= cy - half_h && py <= cy + half_h
-                {
+                // Quick AABB reject before the expensive pixel test.
+                if (px - cx).abs() > half_w || (py - cy).abs() > half_h {
+                    continue;
+                }
+
+                // Transform to ship-local (unrotated) space.
+                let dx = px - cx;
+                let dy = py - cy;
+                let local_x = dx * cos_r + dy * sin_r;
+                let local_y = -dx * sin_r + dy * cos_r;
+
+                // Convert to pixel coordinates (image origin = top-left, Y-down).
+                let pix_x = local_x + half_w;
+                let pix_y = half_h - local_y;
+
+                if pix_x < 0.0 || pix_x >= SHIP_FRAME_WIDTH as f64 {
+                    continue;
+                }
+                if pix_y < 0.0 || pix_y >= 33.0 {
+                    continue;
+                }
+
+                let hit = match img.and_then(|i| i.data.as_ref()) {
+                    Some(data) => {
+                        let stride = SHIP_FRAME_WIDTH as usize * 4;
+                        let alpha = data
+                            [pix_y as usize * stride + pix_x as usize * 4 + 3];
+                        alpha > 0
+                    }
+                    None => true, // fallback to AABB hit if texture unavailable
+                };
+
+                if hit {
                     let impact_pos = Vec2::new(px as f32, py as f32);
                     body.pos = (px, py);
                     impact_queue.impacts.push(MissileImpact {
@@ -100,51 +135,14 @@ pub fn missile_collision(
                         hit_type: HitType::Ship(player.id),
                     });
                     marker.active = false;
-                    // turn.firing left true — handle_missile_impact will clear it
                     return;
                 }
             }
         }
 
-        // Bounce mode — same algorithm as gnils_protocol::apply_bounce but operating on
-        // GravityBody (which uses .velocity instead of .vel, so we can't call it directly).
+        // Bounce mode — use the shared bounce helper.
         if settings.bounce {
-            if body.pos.0 > WORLD_HALF_W {
-                let d = body.pos.0 - body.last_pos.0;
-                if d.abs() > 1e-10 {
-                    body.pos.1 = body.last_pos.1
-                        + (body.pos.1 - body.last_pos.1) * (WORLD_HALF_W - body.last_pos.0) / d;
-                }
-                body.pos.0 = WORLD_HALF_W;
-                body.velocity.0 = -body.velocity.0;
-            }
-            if body.pos.0 < -WORLD_HALF_W {
-                let d = body.last_pos.0 - body.pos.0;
-                if d.abs() > 1e-10 {
-                    body.pos.1 = body.last_pos.1
-                        + (body.pos.1 - body.last_pos.1) * (body.last_pos.0 + WORLD_HALF_W) / d;
-                }
-                body.pos.0 = -WORLD_HALF_W;
-                body.velocity.0 = -body.velocity.0;
-            }
-            if body.pos.1 > WORLD_HALF_H {
-                let d = body.pos.1 - body.last_pos.1;
-                if d.abs() > 1e-10 {
-                    body.pos.0 = body.last_pos.0
-                        + (body.pos.0 - body.last_pos.0) * (WORLD_HALF_H - body.last_pos.1) / d;
-                }
-                body.pos.1 = WORLD_HALF_H;
-                body.velocity.1 = -body.velocity.1;
-            }
-            if body.pos.1 < -WORLD_HALF_H {
-                let d = body.last_pos.1 - body.pos.1;
-                if d.abs() > 1e-10 {
-                    body.pos.0 = body.last_pos.0
-                        + (body.pos.0 - body.last_pos.0) * (body.last_pos.1 + WORLD_HALF_H) / d;
-                }
-                body.pos.1 = -WORLD_HALF_H;
-                body.velocity.1 = -body.velocity.1;
-            }
+            crate::systems::physics::bounce_gravity_body(&mut body);
         }
     }
 }

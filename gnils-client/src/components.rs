@@ -13,7 +13,7 @@ pub struct Player {
     /// Distance from center to gun point
     pub gun_offset: f64,
     /// Explosion animation frame counter
-    pub explosion_frame: u32,
+    pub explosion_progress: f64,
 }
 
 impl Player {
