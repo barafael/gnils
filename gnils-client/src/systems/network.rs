@@ -66,6 +66,7 @@ impl Plugin for NetPlugin {
                     apply_game_events.after(handle_socket),
                     apply_ephemeral.after(handle_socket),
                     broadcast_aim.after(handle_socket),
+                    check_peer_disconnect.after(handle_socket),
                     network_auto_advance.after(handle_socket),
                 ),
             );
@@ -105,6 +106,7 @@ fn handle_socket(
     settings: Res<GameSettings>,
     state: Res<State<GamePhase>>,
     mut started: Local<bool>,
+    mut prev_is_host: Local<bool>,
 ) {
     let Some(mut socket) = socket else {
         return;
@@ -142,9 +144,18 @@ fn handle_socket(
     if let Some(my_id) = net.my_id
         && (peers_changed || my_id_just_set)
     {
+        let was_host = *prev_is_host;
         net.is_host = net.sorted_all().first() == Some(&my_id);
-        if net.is_host {
-            info!("host election: this peer is the host");
+        *prev_is_host = net.is_host;
+        if net.is_host && !was_host {
+            // Host failover: sync the sequence counter so the new host
+            // continues from the last applied event. On initial election
+            // (no events applied yet) this just leaves next_seq at 0.
+            net.next_seq = net.last_applied_seq.map(|s| s + 1).unwrap_or(0);
+            info!(
+                next_seq = net.next_seq,
+                "host election: this peer is now the host"
+            );
         }
     }
 
@@ -488,6 +499,48 @@ fn broadcast_aim(
     );
 }
 
+/// Detect when the opponent disconnects during active network play. After a
+/// 3-second grace period (allowing for momentary WebRTC hiccups), close the
+/// socket and return to the main menu. Host re-election and sequence
+/// continuity are already handled in `handle_socket` — this system only deals
+/// with the "nobody to play against" case.
+fn check_peer_disconnect(
+    net: Res<NetState>,
+    mut net_mode: ResMut<NetworkMode>,
+    phase: Res<State<GamePhase>>,
+    mut next_state: ResMut<NextState<GamePhase>>,
+    time: Res<Time>,
+    mut commands: Commands,
+    mut timer: Local<f32>,
+) {
+    if !net_mode.is_network() {
+        *timer = 0.0;
+        return;
+    }
+
+    let in_game = matches!(
+        *phase.get(),
+        GamePhase::Aiming | GamePhase::Firing | GamePhase::RoundOver | GamePhase::RoundSetup
+    );
+    if !in_game {
+        *timer = 0.0;
+        return;
+    }
+
+    if net.peers.is_empty() {
+        *timer += time.delta_secs();
+        if *timer >= 3.0 {
+            info!("Opponent disconnected — returning to main menu");
+            *net_mode = NetworkMode::Local;
+            close_socket(&mut commands);
+            next_state.set(GamePhase::MainMenu);
+            *timer = 0.0;
+        }
+    } else {
+        *timer = 0.0;
+    }
+}
+
 /// Auto-advance the round/game in network mode, deterministically on both
 /// peers. After a round ends, wait a few seconds, pick who goes first (lower
 /// score; player 1 on ties — same rule as local mode), and start the next
@@ -495,6 +548,7 @@ fn broadcast_aim(
 fn network_auto_advance(
     time: Res<Time>,
     settings: Res<GameSettings>,
+    net: Res<NetState>,
     mut turn: ResMut<TurnState>,
     mut players: Query<&mut Player>,
     mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
@@ -508,6 +562,11 @@ fn network_auto_advance(
     mut timer: Local<f32>,
 ) {
     if !net_mode.is_network() {
+        return;
+    }
+    // Don't auto-advance if the opponent is gone — the disconnect handler
+    // takes over and returns to the menu.
+    if net.peers.is_empty() {
         return;
     }
     if *phase.get() != GamePhase::RoundOver || !turn.round_over {
