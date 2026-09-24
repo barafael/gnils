@@ -93,7 +93,7 @@ pub fn draw_missile_trail(
             // Trail canvas is a pixel buffer (0..800, 0..600, Y-down).
             // Convert from Bevy coords (center origin, Y-up) to pixel coords.
             trail::draw_aa_line(
-                image,
+                image.into_inner(),
                 body.last_pos.0 + 400.0,
                 300.0 - body.last_pos.1,
                 body.pos.0 + 400.0,
@@ -134,10 +134,7 @@ pub fn update_missile_visibility(
 pub fn update_missile_ui(
     missile_q: Query<(&GravityBody, &MissileMarker)>,
     turn: Res<TurnState>,
-    mut status_q: Query<
-        (&mut Text, &mut Visibility),
-        (With<UiMissileStatus>, Without<MissileMarker>),
-    >,
+    mut status_q: Query<(&mut Text, &mut Visibility), With<UiMissileStatus>>,
 ) {
     for (mut text, mut vis) in status_q.iter_mut() {
         if !turn.firing {

@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = "0.18"
-rand = "0.8"
+bevy = "0.19"
+rand = "0.10"
 gnils-protocol = { path = "../gnils-protocol" }
 gnils-net = { path = "../gnils-net" }
-postcard = { version = "1.0", features = ["alloc"] }
+postcard = { version = "1.1", features = ["alloc"] }
 uuid = "1"
 serde = { version = "1", features = ["derive"] }
 
@@ -16,7 +16,8 @@ serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "0.2", features = ["js"] }
+# rand 0.10 → getrandom 0.4 requires explicit opt-in for wasm32.
+getrandom = { version = "0.4", features = ["wasm_js"] }
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
     "Window",

@@ -47,7 +47,7 @@ pub fn update_player_sprites(
 
         if let Some((frame1, frame2)) = frames {
             let blended_img = crate::ship_blend::blend_frames(&frame1, &frame2, blend_f);
-            if let Some(target) = images.get_mut(blended_handle) {
+            if let Some(mut target) = images.get_mut(blended_handle) {
                 *target = blended_img;
             }
         }
@@ -119,6 +119,10 @@ pub fn update_ship_explosion(
 }
 
 /// Update UI text for scores and angle/power.
+/// The four text queries must be disjoint (`Without` filters) since they all
+/// access `&mut Text` in one system.
+#[allow(clippy::type_complexity)]
+#[allow(clippy::too_many_arguments)]
 pub fn update_ui_text(
     players: Query<&Player>,
     turn: Res<TurnState>,
@@ -159,26 +163,29 @@ pub fn update_ui_text(
         ),
     >,
     settings: Res<GameSettings>,
+    net: Res<gnils_net::NetState>,
 ) {
+    let p1 = net.player_name(1).unwrap_or("Player 1");
+    let p2 = net.player_name(2).unwrap_or("Player 2");
     for player in players.iter() {
         if player.id == 1 {
             if let Ok(mut text) = score_p1.single_mut() {
-                **text = format!("Player 1  --  {}", player.score);
+                **text = format!("{p1}  --  {}", player.score);
             }
-        } else {
-            if let Ok(mut text) = score_p2.single_mut() {
-                **text = format!("{}  --  Player 2", player.score);
-            }
+        } else if let Ok(mut text) = score_p2.single_mut() {
+            **text = format!("{}  --  {p2}", player.score);
         }
 
-        if player.id == turn.current_player && !turn.firing && !turn.round_over {
-            if let Ok(mut text) = angle_power.single_mut() {
-                **text = format!(
-                    "Angle: {:.2}  Power: {:.1}",
-                    player.angle.to_degrees(),
-                    player.power
-                );
-            }
+        if player.id == turn.current_player
+            && !turn.firing
+            && !turn.round_over
+            && let Ok(mut text) = angle_power.single_mut()
+        {
+            **text = format!(
+                "Angle: {:.2}  Power: {:.1}",
+                player.angle.to_degrees(),
+                player.power
+            );
         }
     }
 

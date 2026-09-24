@@ -1,13 +1,14 @@
 use bevy::prelude::*;
 use bevy::window::{MonitorSelection, WindowMode};
 
-use gnils_net::{GameEvent, NetMsg};
+use gnils_net::{GameEvent, NetMsg, NetState};
 
 use crate::components::*;
 use crate::constants::*;
 use crate::resources::*;
 use crate::systems::network::PendingEdits;
 
+#[allow(clippy::too_many_arguments)]
 pub fn aiming_input(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
@@ -44,10 +45,10 @@ pub fn aiming_input(
     let current = turn.current_player;
 
     // In network mode, only the active player (this client's ID) can control the ship
-    if let Some(pid) = net_mode.player_id() {
-        if current != pid {
-            return;
-        }
+    if let Some(pid) = net_mode.player_id()
+        && current != pid
+    {
+        return;
     }
 
     let dt = time.delta_secs();
@@ -130,6 +131,7 @@ fn update_repeat(
     false
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn round_over_input(
     keys: Res<ButtonInput<KeyCode>>,
     settings: Res<GameSettings>,
@@ -210,6 +212,7 @@ pub fn menu_toggle_input(
 }
 
 /// Handle navigation and activation inside the settings menu.
+#[allow(clippy::too_many_arguments)]
 pub fn menu_nav_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut menu: ResMut<MenuOpen>,
@@ -222,6 +225,7 @@ pub fn menu_nav_input(
     mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
     mut window_q: Query<&mut Window>,
     mut net_mode: ResMut<NetworkMode>,
+    net: Res<NetState>,
     mut commands: Commands,
 ) {
     if !menu.open {
@@ -276,7 +280,7 @@ pub fn menu_nav_input(
         2 => {
             menu.open = false;
             *net_mode = NetworkMode::Local;
-            crate::systems::network::close_socket(&mut commands);
+            crate::systems::network::close_socket(&mut commands, &net);
             next_state.set(GamePhase::MainMenu);
         }
         3 => {
@@ -357,7 +361,7 @@ pub(crate) fn reset_for_new_round(
     settings: &GameSettings,
 ) {
     if let Some(image) = images.get_mut(&trail_canvas.image_handle) {
-        crate::trail::clear_trail(image);
+        crate::trail::clear_trail(image.into_inner());
     }
 
     turn.round_over = false;

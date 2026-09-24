@@ -97,3 +97,101 @@ pub fn clear_trail(image: &mut Image) {
         data.fill(0);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::asset::RenderAssetUsages;
+    use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+
+    fn blank_canvas(w: i32, h: i32) -> Image {
+        let mut img = Image::new_fill(
+            Extent3d {
+                width: w as u32,
+                height: h as u32,
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            &[0, 0, 0, 0],
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::all(),
+        );
+        img.data = Some(vec![0u8; (w * h * 4) as usize]);
+        img
+    }
+
+    fn lit_pixel_count(image: &Image) -> usize {
+        image
+            .data
+            .as_ref()
+            .unwrap()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|px| px[3] > 0)
+            .count()
+    }
+
+    #[test]
+    fn diagonal_line_lights_pixels() {
+        let mut img = blank_canvas(100, 100);
+        draw_aa_line(&mut img, 0.0, 0.0, 99.0, 99.0, (255, 0, 0));
+        let lit = lit_pixel_count(&img);
+        assert!(lit >= 100, "expected at least one pixel per step, got {lit}");
+        // All lit pixels are reddish (alpha-composited onto black).
+        for px in img.data.as_ref().unwrap().as_chunks::<4>().0 {
+            if px[3] > 0 {
+                assert!(px[0] > 0, "red channel lost: {px:?}");
+                assert_eq!(px[1], 0);
+                assert_eq!(px[2], 0);
+            }
+        }
+    }
+
+    #[test]
+    fn out_of_bounds_lines_do_not_panic() {
+        let mut img = blank_canvas(10, 10);
+        draw_aa_line(&mut img, -50.0, -50.0, 200.0, 200.0, (0, 255, 0));
+        draw_aa_line(&mut img, -1.0, 5.5, 11.0, 5.5, (0, 255, 0));
+    }
+
+    #[test]
+    fn repeated_draws_composite_alpha() {
+        let mut img = blank_canvas(8, 8);
+        draw_aa_line(&mut img, 0.0, 3.5, 7.0, 3.5, (255, 255, 255));
+        let after_first = lit_pixel_count(&img);
+        assert!(after_first > 0);
+        let max_before = img
+            .data
+            .as_ref()
+            .unwrap()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|px| px[3])
+            .max()
+            .unwrap();
+        // Drawing the same line again must never decrease any alpha.
+        draw_aa_line(&mut img, 0.0, 3.5, 7.0, 3.5, (255, 255, 255));
+        let max_after = img
+            .data
+            .as_ref()
+            .unwrap()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|px| px[3])
+            .max()
+            .unwrap();
+        assert!(max_after >= max_before);
+    }
+
+    #[test]
+    fn clear_trail_resets_canvas() {
+        let mut img = blank_canvas(16, 16);
+        draw_aa_line(&mut img, 0.0, 0.0, 15.0, 15.0, (255, 0, 0));
+        assert!(lit_pixel_count(&img) > 0);
+        clear_trail(&mut img);
+        assert_eq!(lit_pixel_count(&img), 0);
+    }
+}

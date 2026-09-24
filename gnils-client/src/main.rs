@@ -47,6 +47,8 @@ fn main() {
         .insert_resource(NetSeed::default())
         .insert_resource(JoinRoom::default())
         .insert_resource(LobbyMenu::default())
+        .insert_resource(LobbyStatus::default())
+        .insert_resource(NameDraft::default())
         // Startup systems (run once)
         .add_systems(
             Startup,
@@ -133,7 +135,7 @@ fn main() {
                 systems::particles::cleanup_particles,
             )
                 .chain()
-                .run_if(in_state(GamePhase::Aiming).or(in_state(GamePhase::RoundOver))),
+                .run_if(in_state(GamePhase::Aiming).or_else(in_state(GamePhase::RoundOver))),
         )
         // Round over input (Update for reliable key detection)
         .add_systems(

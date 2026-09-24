@@ -30,19 +30,23 @@ Both players share the same keyboard. Start from the main menu → **New Game**.
 
 ### Network multiplayer
 
-Peer-to-peer over WebRTC, relayed by a public signaling server. No server to run, no certificates to exchange. Both players share a room: one hosts, the other joins.
+Peer-to-peer over WebRTC, relayed by a public signaling server. No server to run, no certificates to exchange. Both players meet in a shared **room lobby**: everyone goes by a name, claims one of the two player seats, and the host starts the game once both seats are taken. Extra peers can watch from the lobby.
 
 **Hosting:**
 
 1. Main menu → **Network → Host**
 2. A room id is generated (shown in the address bar on the web build)
 3. Share the room id with your opponent
+4. Claim a seat; when both seats are claimed, select **Start Game**
 
 **Joining:**
 
-1. Main menu → **Network → Join**
-2. Enter the host's room id
-3. Press `Enter` to connect; the game starts automatically when the second player is in the room
+1. Main menu → **Network → Name** sets the name you go by (a pet name is drawn at startup)
+2. Main menu → **Network → Join**
+3. Enter the host's room id and press `Enter`; you land in the room lobby
+4. Claim the free seat and wait for the host to start
+
+**In the lobby:** `↑` / `↓` navigate, `Enter` claim / release / start / leave, `Escape` leave. Both peers must be seated before the host can start.
 
 > Works identically in the browser and native — anyone can host or join.
 

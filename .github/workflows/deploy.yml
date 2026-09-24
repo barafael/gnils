@@ -36,7 +36,13 @@ jobs:
           restore-keys: native-
 
       - name: Check workspace (native)
-        run: cargo check --workspace --exclude gnils
+        run: cargo check --workspace
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
 
   build:
     runs-on: ubuntu-latest

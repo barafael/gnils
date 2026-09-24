@@ -47,26 +47,8 @@ pub fn draw_bounce_border(
 pub fn update_ui_visibility(
     turn: Res<TurnState>,
     menu: Res<MenuOpen>,
-    mut angle_power: Query<
-        &mut Visibility,
-        (
-            With<UiAnglePower>,
-            Without<UiMissileStatus>,
-            Without<UiDimOverlay>,
-            Without<UiRoundOverlay>,
-            Without<UiEndRoundMsg>,
-        ),
-    >,
-    mut missile_status: Query<
-        &mut Visibility,
-        (
-            With<UiMissileStatus>,
-            Without<UiAnglePower>,
-            Without<UiDimOverlay>,
-            Without<UiRoundOverlay>,
-            Without<UiEndRoundMsg>,
-        ),
-    >,
+    mut angle_power: Query<&mut Visibility, (With<UiAnglePower>, Without<UiMissileStatus>)>,
+    mut missile_status: Query<&mut Visibility, (With<UiMissileStatus>, Without<UiAnglePower>)>,
 ) {
     for mut vis in angle_power.iter_mut() {
         *vis = if turn.firing || turn.round_over || menu.open {
@@ -194,17 +176,14 @@ pub fn draw_zoom_view(
 }
 
 /// Animate the "Round N" / "Game Over" overlay text with zoom and fade effect.
+///
+/// The text query is only accessed via `get_mut` on the overlay's children,
+/// so no disjointness filters are needed.
+#[allow(clippy::type_complexity)]
 pub fn update_round_overlay(
     mut turn: ResMut<TurnState>,
-    mut container_q: Query<
-        (&mut Visibility, &Children),
-        (
-            With<UiRoundOverlay>,
-            Without<UiDimOverlay>,
-            Without<UiEndRoundMsg>,
-        ),
-    >,
-    mut text_q: Query<(&mut Text, &mut TextFont, &mut TextColor), Without<UiRoundOverlay>>,
+    mut container_q: Query<(&mut Visibility, &Children), With<UiRoundOverlay>>,
+    mut text_q: Query<(&mut Text, &mut TextFont, &mut TextColor)>,
 ) {
     let show = turn.show_round > 30.0;
 
@@ -225,7 +204,7 @@ pub fn update_round_overlay(
 
                     let scale_factor = if turn.game_over { 15.0 } else { 25.0 };
                     let size = ((100.0 - turn.show_round) * 48.0 / scale_factor).max(4.0);
-                    font.font_size = size as f32;
+                    font.font_size = FontSize::Px(size as f32);
                 }
             }
         } else {
@@ -242,27 +221,10 @@ pub fn update_round_overlay(
 pub fn update_round_over_display(
     turn: Res<TurnState>,
     round_result: Res<RoundResult>,
-    mut container_q: Query<
-        &mut Visibility,
-        (
-            With<UiEndRoundMsg>,
-            Without<UiDimOverlay>,
-            Without<UiRoundOverlay>,
-            Without<UiAnglePower>,
-            Without<UiMissileStatus>,
-        ),
-    >,
-    mut text_q: Query<
-        &mut Text,
-        (
-            With<UiDimOverlay>,
-            Without<UiEndRoundMsg>,
-            Without<UiRoundOverlay>,
-            Without<UiAnglePower>,
-            Without<UiMissileStatus>,
-        ),
-    >,
+    mut container_q: Query<&mut Visibility, With<UiEndRoundMsg>>,
+    mut text_q: Query<&mut Text, With<UiDimOverlay>>,
     players: Query<&Player>,
+    net: Res<gnils_net::NetState>,
 ) {
     let show_msg = turn.round_over && turn.show_round <= 30.0 && turn.show_planets <= 0.0;
 
@@ -307,9 +269,15 @@ pub fn update_round_over_display(
                     }
                 }
                 if p1_score > p2_score {
-                    lines.push("Player 1 has won the game".to_string());
+                    lines.push(format!(
+                        "{} has won the game",
+                        net.player_name(1).unwrap_or("Player 1")
+                    ));
                 } else if p2_score > p1_score {
-                    lines.push("Player 2 has won the game".to_string());
+                    lines.push(format!(
+                        "{} has won the game",
+                        net.player_name(2).unwrap_or("Player 2")
+                    ));
                 } else {
                     lines.push("The game has ended in a tie".to_string());
                 }

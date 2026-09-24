@@ -95,11 +95,11 @@ pub fn setup_background(mut commands: Commands, assets: Res<GameAssets>) {
 }
 
 pub fn setup_players(mut commands: Commands, blended: Res<BlendedShipImages>) {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
+    use rand::RngExt;
+    let mut rng = rand::rng();
 
-    let y1 = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
-    let y2 = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
+    let y1 = rng.random_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
+    let y2 = rng.random_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
 
     commands.spawn((
         Sprite::from_image(blended.handles[0].clone()),
@@ -173,8 +173,8 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
     commands.spawn((
         Text::new("Player 1  --  0"),
         TextFont {
-            font: assets.font.clone(),
-            font_size: 14.0,
+            font: assets.font.clone().into(),
+            font_size: FontSize::Px(14.0),
             ..default()
         },
         TextColor(Color::srgb(
@@ -194,8 +194,8 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
     commands.spawn((
         Text::new("0  --  Player 2"),
         TextFont {
-            font: assets.font.clone(),
-            font_size: 14.0,
+            font: assets.font.clone().into(),
+            font_size: FontSize::Px(14.0),
             ..default()
         },
         TextColor(Color::srgb(
@@ -215,8 +215,8 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
     commands.spawn((
         Text::new("Angle: 90.00  Power: 100.0"),
         TextFont {
-            font: assets.font.clone(),
-            font_size: 14.0,
+            font: assets.font.clone().into(),
+            font_size: FontSize::Px(14.0),
             ..default()
         },
         TextColor(Color::WHITE),
@@ -232,8 +232,8 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
     commands.spawn((
         Text::new("Round 1"),
         TextFont {
-            font: assets.font.clone(),
-            font_size: 14.0,
+            font: assets.font.clone().into(),
+            font_size: FontSize::Px(14.0),
             ..default()
         },
         TextColor(Color::WHITE),
@@ -251,8 +251,8 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
     commands.spawn((
         Text::new(""),
         TextFont {
-            font: assets.font.clone(),
-            font_size: 14.0,
+            font: assets.font.clone().into(),
+            font_size: FontSize::Px(14.0),
             ..default()
         },
         TextColor(Color::WHITE),
@@ -289,8 +289,8 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
             parent.spawn((
                 Text::new("Round 1"),
                 TextFont {
-                    font: assets.font.clone(),
-                    font_size: 48.0,
+                    font: assets.font.clone().into(),
+                    font_size: FontSize::Px(48.0),
                     ..default()
                 },
                 TextColor(Color::WHITE),
@@ -330,8 +330,8 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
                     box_parent.spawn((
                         Text::new(""),
                         TextFont {
-                            font: assets.font.clone(),
-                            font_size: 14.0,
+                            font: assets.font.clone().into(),
+                            font_size: FontSize::Px(14.0),
                             ..default()
                         },
                         TextColor(Color::WHITE),
@@ -374,8 +374,8 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
                     box_parent.spawn((
                         Text::new(""),
                         TextFont {
-                            font: assets.font.clone(),
-                            font_size: 14.0,
+                            font: assets.font.clone().into(),
+                            font_size: FontSize::Px(14.0),
                             ..default()
                         },
                         TextColor(Color::WHITE),

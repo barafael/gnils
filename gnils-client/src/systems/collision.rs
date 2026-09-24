@@ -8,6 +8,7 @@ use crate::resources::*;
 use gnils_protocol::circle_line_intersect;
 
 /// Check missile collision with planets, ships, and boundaries.
+#[allow(clippy::too_many_arguments)]
 pub fn missile_collision(
     mut missile_q: Query<(&mut GravityBody, &mut MissileMarker)>,
     planets: Query<&Planet>,
@@ -24,14 +25,12 @@ pub fn missile_collision(
         }
 
         // Check timeout
-        if body.flight < 0 {
-            if !is_on_screen(body.pos) {
-                info!("Missile timed out (off-screen)");
-                marker.active = false;
-                turn.firing = false;
-                turn.current_player = turn.other_player();
-                continue;
-            }
+        if body.flight < 0 && !is_on_screen(body.pos) {
+            info!("Missile timed out (off-screen)");
+            marker.active = false;
+            turn.firing = false;
+            turn.current_player = turn.other_player();
+            continue;
         }
 
         // Check out of extended range

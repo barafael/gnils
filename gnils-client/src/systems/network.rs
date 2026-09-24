@@ -1,20 +1,26 @@
 /// Client-side networking: matchbox P2P, ported from the omdurman approach.
 ///
-/// The simulation is *deterministic lockstep*: both peers run the identical
+/// Before the game, the room is a **lobby** (the chinese-checkers approach):
+/// peers greet with their name, claim one of the two player seats, and the
+/// host — the single roster authority — starts the game explicitly. Peers
+/// without a seat watch from the lobby.
+///
+/// The game itself is *deterministic lockstep*: both peers run the identical
 /// local simulation, and only semantic events cross the wire:
-///   - `GameEvent::StartGame` (host commits seed + settings + player ids)
+///   - `NetMsg::Start` (host commits roster + seed + settings)
 ///   - `GameEvent::ShotFired` (the active player's shot)
 ///   - `Ephemeral::AimUpdate` (unreliable aim-line preview for the opponent)
 ///
-/// Events are submitted as `NetMsg::Game` (guest -> host), sequenced by the
-/// host into `NetMsg::Sequenced`, and rebroadcast to every peer (including the
-/// host itself via a loopback queue). Every peer applies an event only in its
-/// `Sequenced` form, so everyone observes one canonical, ordered stream.
+/// Shot events are submitted as `NetMsg::Game` (guest -> host), sequenced by
+/// the host into `NetMsg::Sequenced`, and rebroadcast to every peer (including
+/// the host itself via a loopback queue). Every peer applies an event only in
+/// its `Sequenced` form, so everyone observes one canonical, ordered stream.
 ///
 /// Planet layouts and player Y positions are derived from a shared seed
 /// (`NetSeed`), so the peers need not exchange per-round snapshots.
 use bevy::prelude::*;
 use gnils_net::*;
+use gnils_protocol::GameSettingsData;
 
 use crate::components::*;
 use crate::resources::*;
@@ -46,6 +52,18 @@ pub struct PendingIncoming {
     /// its own receive path next frame so the host applies its own events on
     /// the same apply-on-echo path as everyone else.
     pub loopback: Vec<NetMsg>,
+    /// The host's `Start`: the final roster, seed and settings. Queued by
+    /// `handle_socket` on receipt and by the host's own lobby action, then
+    /// applied by `apply_game_events` — one apply path for sender and
+    /// receivers.
+    pub start: Option<GameStart>,
+}
+
+/// The payload of a [`NetMsg::Start`], ready to be applied.
+pub struct GameStart {
+    pub seats: Vec<Seat>,
+    pub seed: u64,
+    pub settings: GameSettingsData,
 }
 
 // ── Plugin ──────────────────────────────────────────────────────────────────
@@ -54,7 +72,7 @@ pub struct NetPlugin;
 
 impl Plugin for NetPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(NetState::default())
+        app.insert_resource(NetState::with_name(gnils_net::petname()))
             .insert_resource(PendingEdits::default())
             .insert_resource(PendingIncoming::default())
             .add_systems(
@@ -74,18 +92,140 @@ impl Plugin for NetPlugin {
 }
 
 /// Reset all net-side state and drop the socket (used when leaving a network
-/// session back to the main menu).
-pub(crate) fn close_socket(commands: &mut Commands) {
+/// session back to the main menu). The player's own name survives: it
+/// identifies the player, not the session.
+pub(crate) fn close_socket(commands: &mut Commands, net: &NetState) {
     commands.remove_resource::<MatchboxSocket>();
-    commands.insert_resource(NetState::default());
+    commands.remove_resource::<RoomId>();
+    commands.insert_resource(NetState::with_name(net.name.clone()));
     commands.insert_resource(PendingEdits::default());
     commands.insert_resource(PendingIncoming::default());
 }
 
 // ── Socket processing ───────────────────────────────────────────────────────
 
+/// Push the host's roster to every peer. The roster broadcast follows every
+/// roster change, so it lives in one place.
+pub(crate) fn publish_roster(pending: &mut PendingEdits, net: &NetState) {
+    pending
+        .outgoing_broadcast
+        .push(NetMsg::Roster(net.seats.clone()));
+}
+
+/// Drop seats whose peer has left the room, and greeting memory of peers that
+/// are gone. A refresh (or a crashed tab) mints a fresh `PeerId`, so without
+/// this the old seat would sit in the roster forever. The host's own seat
+/// survives: matchbox's peer list is *other* peers and never names yourself.
+/// Returns whether the roster changed and must be republished.
+fn prune_departed(net: &mut NetState) -> bool {
+    let me = net.my_id.as_ref().map(|id| id.to_string());
+    let before = net.seats.len();
+    net.seats.retain(|s| {
+        Some(&s.peer) == me.as_ref()
+            || net.peers.iter().any(|p| p.to_string() == s.peer)
+    });
+    net.greeted.retain(|p| net.peers.contains(p));
+    net.seats.len() != before
+}
+
+/// Add a seat if this peer has none. A new seat claims nothing; a player seat
+/// is the peer's to take with a [`NetMsg::Claim`].
+fn seat_for(net: &mut NetState, peer: &str, name: &str) {
+    if net.seats.iter().any(|s| s.peer == peer) {
+        return;
+    }
+    net.seats.push(Seat {
+        peer: peer.to_string(),
+        name: name.to_string(),
+        player: None,
+    });
+}
+
+/// Mirror the host's current name into its own seat. The host's seat is only
+/// ever *created* by its own greet; on a re-greet — a rename within the room —
+/// it must be updated by hand, because guests ignore a Hello, so nobody else
+/// would republish the roster. Returns whether the roster changed.
+fn sync_host_seat(net: &mut NetState, me: &str) -> bool {
+    match net.seats.iter_mut().find(|s| s.peer == me) {
+        Some(seat) => {
+            if seat.name != net.name {
+                seat.name = net.name.clone();
+                return true;
+            }
+            false
+        }
+        None => {
+            seat_for(net, me, &net.name.clone());
+            false
+        }
+    }
+}
+
+/// The host resolves a claim: `Some(n)` seats the peer at player `n` if the
+/// seat is free or already theirs (switching seats frees the old one on the
+/// same grant); `None` releases. Guests ask via [`NetMsg::Claim`] and wait
+/// for the roster. Only the host calls this; the roster is the one authority.
+/// Returns whether the roster changed and must be republished.
+fn grant_claim(net: &mut NetState, peer: &str, claim: Option<u8>) -> bool {
+    if !net.seats.iter().any(|s| s.peer == peer) {
+        return false;
+    }
+    match claim {
+        Some(n @ (1 | 2)) => {
+            let taken_by_other = net
+                .seats
+                .iter()
+                .any(|s| s.player == Some(n) && s.peer != peer);
+            if taken_by_other {
+                return false;
+            }
+            let seat = net.seats.iter_mut().find(|s| s.peer == peer).unwrap();
+            seat.player = Some(n);
+            true
+        }
+        _ => {
+            let seat = net.seats.iter_mut().find(|s| s.peer == peer).unwrap();
+            let held = seat.player.take();
+            held.is_some()
+        }
+    }
+}
+
+/// Resolve a claim on the host and tell the room: apply it, write the status
+/// line, and republish the roster. Shared by the host's own lobby action and
+/// the `Claim` messages arriving from guests.
+pub(crate) fn host_apply_claim(
+    net: &mut NetState,
+    pending: &mut PendingEdits,
+    status: &mut LobbyStatus,
+    peer: &str,
+    claim: Option<u8>,
+) {
+    let granted = grant_claim(net, peer, claim);
+    let name = net
+        .seats
+        .iter()
+        .find(|s| s.peer == peer)
+        .map(|s| s.name.as_str())
+        .unwrap_or("?")
+        .to_string();
+    match (claim, granted) {
+        (Some(n), true) => {
+            status.0 = format!("{name} claimed Player {n}.");
+            info!(name = %name, player = n, "seat claimed");
+        }
+        (None, true) => {
+            status.0 = format!("{name} released their seat.");
+            info!(name = %name, "seat released");
+        }
+        (Some(n), false) => status.0 = format!("Player {n} is taken."),
+        (None, false) => return,
+    }
+    publish_roster(pending, net);
+}
+
 /// Once the matchbox socket has received its id (i.e. connected to the
-/// signaling server), leave `Connecting` and wait for an opponent.
+/// signaling server), leave `Connecting` and wait in the lobby.
 fn transition_connecting(
     net: Res<NetState>,
     state: Res<State<GamePhase>>,
@@ -96,6 +236,10 @@ fn transition_connecting(
     }
 }
 
+/// The whole room conversation, one pump: peer changes, host election,
+/// greetings, seat claims, the host's roster broadcasts, and the `Start` that
+/// moves seated players into the game. Also carries the in-game shot
+/// sequencing. Runs on the socket every frame.
 #[allow(clippy::too_many_arguments)]
 fn handle_socket(
     socket: Option<ResMut<MatchboxSocket>>,
@@ -103,9 +247,7 @@ fn handle_socket(
     mut pending: ResMut<PendingEdits>,
     mut incoming: ResMut<PendingIncoming>,
     net_mode: Res<NetworkMode>,
-    settings: Res<GameSettings>,
-    state: Res<State<GamePhase>>,
-    mut started: Local<bool>,
+    mut status: ResMut<LobbyStatus>,
     mut prev_is_host: Local<bool>,
 ) {
     let Some(mut socket) = socket else {
@@ -159,32 +301,38 @@ fn handle_socket(
         }
     }
 
-    // Host: auto-start the game once both players are present and the game
-    // hasn't begun yet. `started` is a frame-local latch so we don't re-send
-    // StartGame every frame while the echo is still in flight.
-    if net.peers.len() != 1 {
-        *started = false;
+    let peers = net.peers.clone();
+
+    // The host prunes seats whose peer has left the mesh, so the roster
+    // never grows stale. Publish only on an actual change, so an idle room
+    // costs nothing.
+    if net.is_host && prune_departed(&mut net) {
+        publish_roster(&mut pending, &net);
     }
-    if net.is_host
-        && !*started
-        && net.peers.len() == 1
-        && !net_mode.is_network()
-        && *state.get() == GamePhase::WaitingForOpponent
-    {
-        *started = true;
-        let assignments: Vec<(PeerId, u8)> = net
-            .sorted_all()
-            .iter()
-            .enumerate()
-            .map(|(i, &p)| (p, i as u8 + 1))
-            .collect();
-        let ev = GameEvent::StartGame {
-            seed: new_seed(),
-            settings: settings.to_protocol(),
-            assignments,
-        };
-        info!("host: both players present, starting game");
-        pending.outgoing_broadcast.push(NetMsg::Game(ev));
+
+    // Announce ourselves to peers we have not greeted yet: once when we first
+    // arrive, and afterwards only to peers that join later. A re-greet is
+    // also how a rename propagates.
+    let me = net.my_id.map(|id| id.to_string()).unwrap_or_default();
+    if net.name.is_empty() && !me.is_empty() {
+        net.name = format!("player-{}", &me[..me.len().min(4)]);
+    }
+    let unacquainted: Vec<PeerId> = peers
+        .iter()
+        .filter(|p| !net.greeted.contains(p))
+        .copied()
+        .collect();
+    if !net.name.is_empty() && !unacquainted.is_empty() {
+        pending
+            .outgoing_broadcast
+            .push(NetMsg::Hello { name: net.name.clone() });
+        // The host's own seat is created here, by the Hello it never
+        // receives. A re-greet also updates the seat after a rename.
+        if net.is_host && sync_host_seat(&mut net, &me) {
+            publish_roster(&mut pending, &net);
+        }
+        info!(name = %net.name, greeted = unacquainted.len(), "greeted the room");
+        net.greeted.extend(unacquainted);
     }
 
     let mut targeted: Vec<(NetMsg, PeerId)> = Vec::new();
@@ -216,6 +364,7 @@ fn handle_socket(
         .chain(loopback);
 
     for (peer, msg) in decoded {
+        let peer_str = peer.to_string();
         match msg {
             NetMsg::Game(ev) => {
                 if !is_host {
@@ -253,6 +402,53 @@ fn handle_socket(
             }
             NetMsg::Ephemeral(eph) => {
                 incoming.ephemeral.push((eph, peer));
+            }
+            NetMsg::Hello { name } => {
+                info!(peer = %peer_str, %name, "peer greeted the room");
+                if is_host {
+                    // A repeat Hello from a known peer is a rename, not a
+                    // duplicate join: the name editor re-greets precisely so
+                    // this happens.
+                    let known = net.seats.iter().any(|s| s.peer == peer_str);
+                    if known {
+                        let seat =
+                            net.seats.iter_mut().find(|s| s.peer == peer_str).unwrap();
+                        if seat.name != name {
+                            seat.name = name;
+                            publish_roster(&mut pending, &net);
+                        }
+                    } else {
+                        seat_for(&mut net, &peer_str, &name);
+                        publish_roster(&mut pending, &net);
+                    }
+                }
+            }
+            NetMsg::Claim(claim) => {
+                if is_host {
+                    host_apply_claim(&mut net, &mut pending, &mut status, &peer_str, claim);
+                }
+            }
+            // Guests take the host's roster verbatim; it is the only
+            // authority. The host ignores foreign rosters — its own copy is
+            // the one being authored.
+            NetMsg::Roster(seats) => {
+                if !is_host {
+                    net.seats = seats;
+                }
+            }
+            NetMsg::Start {
+                seats,
+                seed,
+                settings,
+            } => {
+                if !net_mode.is_network() {
+                    info!(seats = seats.len(), "received Start - entering the game");
+                    incoming.start = Some(GameStart {
+                        seats,
+                        seed,
+                        settings,
+                    });
+                }
             }
         }
     }
@@ -358,44 +554,32 @@ fn flush_pending(
 
 // ── Event application ───────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn apply_game_events(
     mut incoming: ResMut<PendingIncoming>,
     mut net_mode: ResMut<NetworkMode>,
     mut settings: ResMut<GameSettings>,
     mut net_seed: ResMut<NetSeed>,
     mut turn: ResMut<TurnState>,
-    net: Res<NetState>,
+    mut net: ResMut<NetState>,
     mut players: Query<&mut Player>,
     mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
     trail_canvas: Res<TrailCanvas>,
     mut images: ResMut<Assets<Image>>,
     mut next: ResMut<NextState<GamePhase>>,
+    mut status: ResMut<LobbyStatus>,
 ) {
-    for (ev, _peer) in incoming.live.drain(..) {
-        match ev {
-            GameEvent::StartGame {
-                seed,
-                settings: gs,
-                assignments,
-            } => {
-                if net_mode.is_network() {
-                    // Duplicate / late StartGame while already playing.
-                    continue;
-                }
-                let my_id = net.my_id;
-                let player_id = my_id
-                    .and_then(|id| {
-                        assignments
-                            .iter()
-                            .find(|(p, _)| *p == id)
-                            .map(|(_, pid)| *pid)
-                    })
-                    .or_else(|| my_id.and_then(|id| net.player_id_for(id)))
-                    .unwrap_or(1);
+    // The host's Start: take the final roster, seat us, and deal. This is the
+    // one apply path for sender (the host queues its own Start in the lobby)
+    // and receivers (queued from `handle_socket`).
+    if let Some(start) = incoming.start.take() {
+        net.seats = start.seats;
+        match net.my_player() {
+            Some(player_id) => {
                 *net_mode = NetworkMode::Network { player_id };
-                settings.apply_from_protocol(&gs);
-                net_seed.base = seed;
-                info!(seed, player_id, "game started via host StartGame");
+                settings.apply_from_protocol(&start.settings);
+                net_seed.base = start.seed;
+                info!(seed = start.seed, player_id, "game started via host Start");
                 reset_for_game_start(
                     &mut turn,
                     &mut players,
@@ -406,6 +590,15 @@ fn apply_game_events(
                 );
                 next.set(GamePhase::Loading);
             }
+            None => {
+                status.0 = "Game in progress - spectating from the lobby.".into();
+                info!("Start without a seat for us; staying in the lobby as a spectator");
+            }
+        }
+    }
+
+    for (ev, _peer) in incoming.live.drain(..) {
+        match ev {
             GameEvent::ShotFired {
                 player,
                 angle,
@@ -532,7 +725,7 @@ fn check_peer_disconnect(
         if *timer >= 3.0 {
             info!("Opponent disconnected — returning to main menu");
             *net_mode = NetworkMode::Local;
-            close_socket(&mut commands);
+            close_socket(&mut commands, &net);
             next_state.set(GamePhase::MainMenu);
             *timer = 0.0;
         }
@@ -545,6 +738,7 @@ fn check_peer_disconnect(
 /// peers. After a round ends, wait a few seconds, pick who goes first (lower
 /// score; player 1 on ties — same rule as local mode), and start the next
 /// round. After game over, reset scores/round and re-seed for a new game.
+#[allow(clippy::too_many_arguments)]
 fn network_auto_advance(
     time: Res<Time>,
     settings: Res<GameSettings>,
@@ -619,4 +813,93 @@ fn network_auto_advance(
         &settings,
     );
     next_state.set(GamePhase::RoundSetup);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gnils_net::{PeerId, Seat};
+
+    fn seat(peer: &str, name: &str, player: Option<u8>) -> Seat {
+        Seat {
+            peer: peer.to_string(),
+            name: name.to_string(),
+            player,
+        }
+    }
+
+    /// The host resolves a claim on its roster; the roster change is what the
+    /// publish broadcasts.
+    #[test]
+    fn the_host_grants_a_free_seat() {
+        let mut net = NetState::with_name("host".into());
+        net.seats = vec![seat("guest", "bob", None)];
+        let mut pending = PendingEdits::default();
+        let mut status = LobbyStatus::default();
+
+        host_apply_claim(&mut net, &mut pending, &mut status, "guest", Some(2));
+
+        assert_eq!(net.seats[0].player, Some(2));
+        assert_eq!(status.0, "bob claimed Player 2.");
+        assert!(
+            pending
+                .outgoing_broadcast
+                .iter()
+                .any(|m| matches!(m, NetMsg::Roster(_))),
+            "the roster must be republished"
+        );
+    }
+
+    #[test]
+    fn a_taken_seat_is_refused() {
+        let mut net = NetState::with_name("host".into());
+        net.seats = vec![seat("a", "ada", Some(1)), seat("b", "bob", None)];
+        let mut pending = PendingEdits::default();
+        let mut status = LobbyStatus::default();
+
+        host_apply_claim(&mut net, &mut pending, &mut status, "b", Some(1));
+
+        assert_eq!(net.seats[1].player, None, "the refused claim must not seat");
+        assert_eq!(net.seats[0].player, Some(1), "the holder keeps the seat");
+        assert_eq!(status.0, "Player 1 is taken.");
+    }
+
+    #[test]
+    fn switching_seats_frees_the_old_one_on_the_same_grant() {
+        let mut net = NetState::with_name("host".into());
+        net.seats = vec![seat("a", "ada", Some(1))];
+        assert!(grant_claim(&mut net, "a", Some(2)));
+        assert_eq!(net.seats[0].player, Some(2));
+    }
+
+    #[test]
+    fn releasing_an_unclaimed_seat_is_not_a_roster_change() {
+        let mut net = NetState::with_name("host".into());
+        net.seats = vec![seat("a", "ada", None)];
+        assert!(!grant_claim(&mut net, "a", None));
+    }
+
+    /// Host failover keeps the lobby self-healing: the departed peer's seat
+    /// goes, ours stays (the peer list never names ourselves).
+    #[test]
+    fn departed_peers_lose_their_seats_but_the_host_keeps_its_own() {
+        let mut net = NetState::with_name("host".into());
+        let me = PeerId(uuid::Uuid::nil());
+        net.my_id = Some(me);
+        net.peers = vec![];
+        net.seats = vec![
+            seat(&me.to_string(), "host", Some(1)),
+            seat("gone", "ghost", Some(2)),
+            seat("here", "bob", None),
+        ];
+        net.greeted = vec![PeerId(uuid::Uuid::new_v4())];
+
+        assert!(prune_departed(&mut net));
+        assert_eq!(net.seats.len(), 1, "only our own seat survives");
+        assert_eq!(net.seats[0].player, Some(1));
+        assert!(net.greeted.is_empty(), "greeting memory of the gone is cleared");
+
+        // Pruning a pristine roster is not a change.
+        assert!(!prune_departed(&mut net));
+    }
 }

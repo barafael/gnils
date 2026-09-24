@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use gnils_protocol::compute_shot_score;
 use rand::rngs::StdRng;
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{Rng, RngExt, SeedableRng};
 
 use crate::components::*;
 use crate::constants::*;
@@ -9,6 +9,7 @@ use crate::events::HitType;
 use crate::resources::*;
 
 /// Handle queued missile impacts: scoring, marking players as shot, etc.
+#[allow(clippy::too_many_arguments)]
 pub fn handle_missile_impact(
     mut impact_queue: ResMut<MissileImpactQueue>,
     mut players: Query<&mut Player>,
@@ -17,6 +18,7 @@ pub fn handle_missile_impact(
     mut spawn_queue: ResMut<ParticleSpawnQueue>,
     settings: Res<GameSettings>,
     mut round_result: ResMut<RoundResult>,
+    net: Res<gnils_net::NetState>,
 ) {
     let impacts = std::mem::take(&mut impact_queue.impacts);
     for impact in impacts {
@@ -72,18 +74,23 @@ pub fn handle_missile_impact(
                         player.score += total_delta;
                     }
                 }
+                // Roster names in network games; "Player n" in hotseat play.
+                let name_of = |id: u8| {
+                    net.player_name(id)
+                        .map(str::to_string)
+                        .unwrap_or_else(|| format!("Player {id}"))
+                };
                 *round_result = RoundResult {
                     hit_player: hit_id,
-                    shooter: last,
                     self_hit: killed_self,
                     hit_score: if killed_self { -SELF_HIT } else { HIT_SCORE },
                     quick_bonus,
                     power_penalty: pen,
                     total_score: total_delta,
                     message: if killed_self {
-                        format!("Player {} hit themselves!", last)
+                        format!("{} hit themselves!", name_of(last))
                     } else {
-                        format!("Player {} hits Player {}!", last, hit_id)
+                        format!("{} hits {}!", name_of(last), name_of(hit_id))
                     },
                 };
 
@@ -122,25 +129,25 @@ pub fn round_setup(
 ) {
     turn.round += 1;
 
-    let mut rng: Box<dyn RngCore> = if net_mode.is_network() {
+    let mut rng: Box<dyn Rng> = if net_mode.is_network() {
         let base = net_seed.map(|s| s.base).unwrap_or(0);
         Box::new(StdRng::seed_from_u64(base ^ turn.round as u64))
     } else {
-        Box::new(rand::thread_rng())
+        Box::new(rand::rng())
     };
 
     // Random mode (network only): each round randomizes game style settings.
     // Both peers derive the same values from the shared seed.
     let randomize = net_mode.is_network() && settings.random;
     if randomize {
-        settings.bounce = rng.gen_bool(0.5);
-        settings.fixed_power = rng.gen_bool(0.5);
-        settings.invisible = rng.gen_bool(0.5);
+        settings.bounce = rng.random_bool(0.5);
+        settings.fixed_power = rng.random_bool(0.5);
+        settings.invisible = rng.random_bool(0.5);
     }
 
     // Randomize player Y positions each round
     for (mut player, mut transform) in players.iter_mut() {
-        let y = rng.gen_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
+        let y = rng.random_range(PLAYER_Y_MIN..=PLAYER_Y_MAX);
         let x = if player.id == 1 { PLAYER1_X } else { PLAYER2_X };
         transform.translation.x = x as f32;
         transform.translation.y = y as f32;

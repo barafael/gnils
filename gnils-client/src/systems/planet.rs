@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use gnils_protocol::{PlanetData, generate_planets};
 use rand::rngs::StdRng;
-use rand::{RngCore, SeedableRng};
+use rand::{Rng, SeedableRng};
 
 use crate::components::Planet;
 use crate::resources::*;
@@ -23,11 +23,11 @@ pub fn spawn_planets(
     // generate identical planets. Runs before `round_setup` increments the
     // round, so this uses the pre-increment round value (deterministic on both
     // peers either way).
-    let mut rng: Box<dyn RngCore> = if net_mode.is_network() {
+    let mut rng: Box<dyn Rng> = if net_mode.is_network() {
         let base = net_seed.map(|s| s.base).unwrap_or(0);
         Box::new(StdRng::seed_from_u64(base ^ turn.round as u64))
     } else {
-        Box::new(rand::thread_rng())
+        Box::new(rand::rng())
     };
     let planets = generate_planets(&settings.to_protocol(), &mut rng);
     spawn_planet_entities(&mut commands, &assets, &planets);

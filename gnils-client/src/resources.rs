@@ -11,7 +11,7 @@ pub enum GamePhase {
     MainMenu,
     /// Connecting to server (network mode only).
     Connecting,
-    /// Connected; waiting for the server to send GameStart once both players are ready.
+    /// Network lobby: greeted the room; claim a seat, wait for the host.
     WaitingForOpponent,
     /// Loading assets; entered after GameStart or local New Game.
     Loading,
@@ -19,7 +19,6 @@ pub enum GamePhase {
     Aiming,
     Firing,
     RoundOver,
-    GameOver,
 }
 
 // ── Network mode ───────────────────────────────────────────────────────────
@@ -65,9 +64,22 @@ pub enum LobbyScreen {
     Main,
     NetworkSub,
     Join,
+    /// The shared room lobby: roster, seat claims, host start.
+    Room,
+    /// The name editor (reachable from the network menu and the room lobby).
+    Name,
     Settings,
     Help,
 }
+
+/// The lobby's one-line status: the last thing that happened in the room
+/// ("bob claimed Player 2.", "Both seats must be claimed…").
+#[derive(Resource, Default)]
+pub struct LobbyStatus(pub String);
+
+/// Draft text while the name editor is open.
+#[derive(Resource, Default)]
+pub struct NameDraft(pub String);
 
 // ── Game settings ──────────────────────────────────────────────────────────
 
@@ -217,7 +229,6 @@ pub struct BlendedShipImages {
 #[derive(Resource, Default)]
 pub struct RoundResult {
     pub hit_player: u8,
-    pub shooter: u8,
     pub self_hit: bool,
     pub hit_score: i32,
     pub quick_bonus: i32,
@@ -229,15 +240,9 @@ pub struct RoundResult {
 /// Deterministic RNG base seed for network games. The per-round seed is
 /// `base ^ round` (plus a salt for the player-Y draw), so both peers generate
 /// identical planets and layouts without exchanging them.
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct NetSeed {
     pub base: u64,
-}
-
-impl Default for NetSeed {
-    fn default() -> Self {
-        Self { base: 0 }
-    }
 }
 
 /// Queued particle spawn requests.

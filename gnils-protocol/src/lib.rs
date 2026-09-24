@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::{Rng, RngExt};
 use serde::{Deserialize, Serialize};
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ pub const BOUNCE_Y_MAX: f64 = WORLD_HALF_H - 1.0; // 299 (top)
 // ── Shared data types ──────────────────────────────────────────────────────
 
 /// Planet data as sent over the network and used in pure physics.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PlanetData {
     pub mass: f64,
     pub radius: f64,
@@ -274,17 +274,17 @@ pub fn generate_planets(
     let mut out = Vec::new();
 
     if settings.max_blackholes > 0 {
-        let n = rng.gen_range(1..=settings.max_blackholes);
+        let n = rng.random_range(1..=settings.max_blackholes);
         for _ in 0..n {
             for _ in 0..1000 {
-                let mass = rng.gen_range(BLACKHOLE_MASS_MIN..=BLACKHOLE_MASS_MAX);
+                let mass = rng.random_range(BLACKHOLE_MASS_MIN..=BLACKHOLE_MASS_MAX);
                 let radius = 1.0_f64;
                 let margin = 3.0 * PLANET_SHIP_DISTANCE;
                 let edge_m = 3.0 * PLANET_EDGE_DISTANCE;
-                let x = rng.gen_range(
+                let x = rng.random_range(
                     (-WORLD_HALF_W + margin + radius)..=(WORLD_HALF_W - margin - radius),
                 );
-                let y = rng.gen_range(
+                let y = rng.random_range(
                     (-WORLD_HALF_H + edge_m + radius)..=(WORLD_HALF_H - edge_m - radius),
                 );
                 if planet_no_overlap(x, y, radius, mass, &placed) {
@@ -301,27 +301,27 @@ pub fn generate_planets(
             }
         }
     } else {
-        let n = rng.gen_range(2..=settings.max_planets.max(2));
+        let n = rng.random_range(2..=settings.max_planets.max(2));
         let mut used: Vec<u8> = Vec::new();
         for _ in 0..n {
             for _ in 0..1000 {
-                let mass = rng.gen_range(PLANET_MASS_MIN..=PLANET_MASS_MAX);
+                let mass = rng.random_range(PLANET_MASS_MIN..=PLANET_MASS_MAX);
                 let radius = mass.powf(PLANET_RADIUS_EXPONENT) * PLANET_RADIUS_SCALE;
-                let x = rng.gen_range(
+                let x = rng.random_range(
                     (-WORLD_HALF_W + PLANET_SHIP_DISTANCE + radius)
                         ..=(WORLD_HALF_W - PLANET_SHIP_DISTANCE - radius),
                 );
-                let y = rng.gen_range(
+                let y = rng.random_range(
                     (-WORLD_HALF_H + PLANET_EDGE_DISTANCE + radius)
                         ..=(WORLD_HALF_H - PLANET_EDGE_DISTANCE - radius),
                 );
                 if planet_no_overlap(x, y, radius, mass, &placed) {
-                    let mut ti = rng.gen_range(0..8u8);
+                    let mut ti = rng.random_range(0..8u8);
                     for _ in 0..20 {
                         if !used.contains(&ti) {
                             break;
                         }
-                        ti = rng.gen_range(0..8u8);
+                        ti = rng.random_range(0..8u8);
                     }
                     used.push(ti);
                     placed.push((x, y, radius, mass));
@@ -345,4 +345,187 @@ fn planet_no_overlap(x: f64, y: f64, r: f64, m: f64, placed: &[(f64, f64, f64, f
         ((x - px).powi(2) + (y - py).powi(2)).sqrt()
             >= (r + pr) * PLANET_OVERLAP_SCALE + PLANET_OVERLAP_MASS_K * (m + pm)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    #[test]
+    fn is_on_screen_boundaries() {
+        assert!(is_on_screen((0.0, 0.0)));
+        // Inclusive lower/left edges
+        assert!(is_on_screen((-WORLD_HALF_W, -WORLD_HALF_H)));
+        // Exclusive upper/right edges
+        assert!(!is_on_screen((WORLD_HALF_W, 0.0)));
+        assert!(!is_on_screen((0.0, WORLD_HALF_H)));
+        assert!(!is_on_screen((401.0, 0.0)));
+    }
+
+    #[test]
+    fn is_in_extended_range_is_3x_world() {
+        assert!(is_in_extended_range((0.0, 0.0)));
+        assert!(is_in_extended_range((
+            2.9 * WORLD_HALF_W,
+            -2.9 * WORLD_HALF_H
+        )));
+        assert!(!is_in_extended_range((3.1 * WORLD_HALF_W, 0.0)));
+        assert!(!is_in_extended_range((0.0, 3.1 * WORLD_HALF_H)));
+    }
+
+    #[test]
+    fn launch_point_offsets_along_angle() {
+        let (x, y) = compute_launch_point(0.0, 0.0, 10.0, 0.0);
+        assert_eq!((x, y), (10.0, 0.0));
+        let (x, y) = compute_launch_point(0.0, 0.0, 10.0, std::f64::consts::FRAC_PI_2);
+        assert!(x.abs() < 1e-9 && (y - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn launch_velocity_scales_with_power() {
+        let (vx, vy) = compute_launch_velocity(100.0, 0.0);
+        assert!((vx - MISSILE_SPEED_SCALE * 100.0).abs() < 1e-9);
+        assert!(vy.abs() < 1e-9);
+    }
+
+    #[test]
+    fn shot_score_self_hit_is_negative() {
+        let (total, quick, pen) = compute_shot_score(true, -50, 1);
+        assert_eq!(total, -SELF_HIT);
+        assert_eq!((quick, pen), (0, 0));
+    }
+
+    #[test]
+    fn shot_score_quickhit_decays_with_attempts() {
+        let (total1, bonus1, _) = compute_shot_score(false, 0, 1);
+        let (total2, bonus2, _) = compute_shot_score(false, 0, 2);
+        let (total3, bonus3, _) = compute_shot_score(false, 0, 3);
+        let (total4, bonus4, _) = compute_shot_score(false, 0, 4);
+        assert_eq!(bonus1, QUICK_SCORE_1);
+        assert_eq!(bonus2, QUICK_SCORE_2);
+        assert_eq!(bonus3, QUICK_SCORE_3);
+        assert_eq!(bonus4, 0);
+        assert!(total1 > total2 && total2 > total3 && total3 > total4);
+    }
+
+    #[test]
+    fn shot_score_applies_power_penalty() {
+        let (total, _, pen) = compute_shot_score(false, -123, 1);
+        assert_eq!(pen, -123);
+        assert_eq!(total, HIT_SCORE - 123 + QUICK_SCORE_1);
+    }
+
+    #[test]
+    fn step_gravity_decrements_flight_and_moves() {
+        let mut pos = (0.0, 0.0);
+        let mut vel = (1.0, 0.0);
+        let mut last = (99.0, 99.0);
+        let mut flight = 10;
+        step_gravity(&mut pos, &mut vel, &mut last, &mut flight, &[]);
+        assert_eq!(flight, 9);
+        assert_eq!(last, (0.0, 0.0));
+        assert!((pos.0 - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn step_gravity_is_deterministic() {
+        let planets = vec![PlanetData {
+            mass: 100.0,
+            radius: 10.0,
+            pos: (50.0, 20.0),
+            is_blackhole: false,
+            texture_index: 0,
+        }];
+        let mut a = ((0.0, 0.0), (2.0, 3.0), (0.0, 0.0), 100_i32);
+        let mut b = ((0.0, 0.0), (2.0, 3.0), (0.0, 0.0), 100_i32);
+        for _ in 0..100 {
+            step_gravity(&mut a.0, &mut a.1, &mut a.2, &mut a.3, &planets);
+            step_gravity(&mut b.0, &mut b.1, &mut b.2, &mut b.3, &planets);
+        }
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn circle_line_intersect_hit_and_miss() {
+        // Horizontal segment through a circle at (10, 0), r = 5.
+        let hit = circle_line_intersect((10.0, 0.0), 5.0, (0.0, 0.0), (20.0, 0.0));
+        // The impact point is pulled back slightly along the segment (alpha - 0.05).
+        assert!((hit.0 - 14.0).abs() < 1e-9, "got {hit:?}");
+        assert!(hit.1.abs() < 1e-9);
+        // Segment far from the circle: sentinel miss position.
+        let miss = circle_line_intersect((10.0, 100.0), 5.0, (0.0, 0.0), (20.0, 0.0));
+        assert_eq!(miss, (2000.0, 1500.0));
+    }
+
+    #[test]
+    fn generate_planets_is_deterministic_for_seed() {
+        let settings = GameSettingsData::default();
+        let mut a = StdRng::seed_from_u64(42);
+        let mut b = StdRng::seed_from_u64(42);
+        assert_eq!(generate_planets(&settings, &mut a), generate_planets(&settings, &mut b));
+    }
+
+    #[test]
+    fn generate_planets_respects_count_and_bounds() {
+        let settings = GameSettingsData {
+            max_planets: 4,
+            ..Default::default()
+        };
+        let mut rng = StdRng::seed_from_u64(7);
+        let planets = generate_planets(&settings, &mut rng);
+        assert!((2..=4).contains(&planets.len()), "got {}", planets.len());
+        for p in &planets {
+            assert!(p.pos.0.abs() <= WORLD_HALF_W && p.pos.1.abs() <= WORLD_HALF_H);
+            assert!(!p.is_blackhole);
+        }
+    }
+
+    #[test]
+    fn generate_planets_never_overlap() {
+        let settings = GameSettingsData {
+            max_planets: 4,
+            ..Default::default()
+        };
+        for seed in 0..20 {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let planets = generate_planets(&settings, &mut rng);
+            for (i, a) in planets.iter().enumerate() {
+                for b in planets.iter().skip(i + 1) {
+                    let d = ((a.pos.0 - b.pos.0).powi(2) + (a.pos.1 - b.pos.1).powi(2)).sqrt();
+                    let min = (a.radius + b.radius) * PLANET_OVERLAP_SCALE
+                        + PLANET_OVERLAP_MASS_K * (a.mass + b.mass);
+                    assert!(d >= min, "seed {seed}: planets overlap");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn generate_blackholes_when_requested() {
+        let settings = GameSettingsData {
+            max_blackholes: 3,
+            ..Default::default()
+        };
+        let mut rng = StdRng::seed_from_u64(3);
+        let planets = generate_planets(&settings, &mut rng);
+        assert!(!planets.is_empty());
+        assert!(planets.len() <= 3);
+        assert!(planets.iter().all(|p| p.is_blackhole));
+    }
+
+    #[test]
+    fn apply_bounce_reflects_velocity() {
+        let mut body = BodySnapshot {
+            pos: (BOUNCE_X_MAX + 5.0, 0.0),
+            vel: (10.0, 0.0),
+            last_pos: (BOUNCE_X_MAX - 1.0, 0.0),
+            flight: 10,
+            active: true,
+        };
+        apply_bounce(&mut body);
+        assert_eq!(body.pos.0, BOUNCE_X_MAX);
+        assert_eq!(body.vel.0, -10.0);
+    }
 }

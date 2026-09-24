@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use rand::Rng;
+use rand::RngExt;
 
 use crate::components::*;
 use crate::constants::*;
@@ -17,7 +17,7 @@ pub fn spawn_particles(
         return;
     }
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let requests = std::mem::take(&mut spawn_queue.requests);
     if !requests.is_empty() {
@@ -31,11 +31,11 @@ pub fn spawn_particles(
         };
 
         for _ in 0..count {
-            let angle = rng.gen_range(0..360) as f64;
+            let angle = rng.random_range(0..360) as f64;
             let speed = if request.size == 5 {
-                rng.gen_range(PARTICLE_5_MIN_SPEED..=PARTICLE_5_MAX_SPEED)
+                rng.random_range(PARTICLE_5_MIN_SPEED..=PARTICLE_5_MAX_SPEED)
             } else {
-                rng.gen_range(PARTICLE_10_MIN_SPEED..=PARTICLE_10_MAX_SPEED)
+                rng.random_range(PARTICLE_10_MIN_SPEED..=PARTICLE_10_MAX_SPEED)
             };
 
             let vx = 0.1 * speed * angle.sin();

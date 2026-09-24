@@ -90,6 +90,9 @@ pub fn blend_frames(frame1: &Image, frame2: &Image, factor: f64) -> Image {
         let a1 = f1_data[idx + 3] as u32;
 
         let out_a = effective_a2 + a1 * (255 - effective_a2) / 255;
+        // The divisions below are guarded by `out_a > 0`; `checked_div` would
+        // only add `Option` noise for a case that cannot occur.
+        #[allow(clippy::manual_checked_ops)]
         if out_a > 0 {
             data[idx] = ((r2 * effective_a2 + r1 * a1 * (255 - effective_a2) / 255) / out_a) as u8;
             data[idx + 1] =
@@ -111,4 +114,87 @@ pub fn blend_frames(frame1: &Image, frame2: &Image, factor: f64) -> Image {
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::all(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blend_frames_are_always_in_range() {
+        for deg in (-720..=720).map(|d| d as f64) {
+            let (img1, img2, f) = compute_blend_frames(deg);
+            assert!(img1 < 8, "deg {deg}: img1 {img1}");
+            assert!(img2 < 8, "deg {deg}: img2 {img2}");
+            assert!((0.0..=1.0).contains(&f), "deg {deg}: f {f}");
+        }
+    }
+
+    #[test]
+    fn blend_frames_at_cardinal_angles() {
+        // Facing east: frame 0 with no blend contribution.
+        let (img1, img2, f) = compute_blend_frames(0.0);
+        // Equal frames shift img2 to the next frame for interpolation.
+        assert_eq!((img1, img2, f), (0, 1, 0.0));
+        // 90°: exactly frame 2.
+        let (img1, img2, f) = compute_blend_frames(90.0);
+        assert_eq!((img1, img2, f), (2, 3, 0.0));
+        // Midway between frames blends 50/50.
+        let (img1, img2, f) = compute_blend_frames(22.5);
+        assert_eq!((img1, img2, f), (1, 0, 0.5));
+    }
+
+    fn solid_frame(rgba: [u8; 4]) -> Image {
+        let mut img = Image::new(
+            Extent3d {
+                width: SHIP_FRAME_WIDTH,
+                height: SHIP_FRAME_HEIGHT,
+                depth_or_array_layers: 1,
+            },
+            TextureDimension::D2,
+            vec![0u8; (SHIP_FRAME_WIDTH * SHIP_FRAME_HEIGHT * 4) as usize],
+            TextureFormat::Rgba8UnormSrgb,
+            RenderAssetUsages::all(),
+        );
+        img.data.as_mut().unwrap()[0..4].copy_from_slice(&rgba);
+        img
+    }
+
+    #[test]
+    fn blend_factor_zero_returns_frame1() {
+        let f1 = solid_frame([255, 0, 0, 255]);
+        let f2 = solid_frame([0, 0, 255, 255]);
+        let out = blend_frames(&f1, &f2, 0.0);
+        let data = out.data.as_ref().unwrap();
+        assert_eq!(&data[0..4], &[255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn blend_factor_one_returns_frame2() {
+        let f1 = solid_frame([255, 0, 0, 255]);
+        let f2 = solid_frame([0, 0, 255, 255]);
+        let out = blend_frames(&f1, &f2, 1.0);
+        let data = out.data.as_ref().unwrap();
+        assert_eq!(&data[0..4], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn blend_half_is_5050_composite() {
+        let f1 = solid_frame([255, 0, 0, 255]);
+        let f2 = solid_frame([0, 0, 255, 255]);
+        let out = blend_frames(&f1, &f2, 0.5);
+        let data = out.data.as_ref().unwrap();
+        assert_eq!(&data[0..4], &[127, 0, 128, 255]);
+    }
+
+    #[test]
+    fn black_overlay_pixels_are_transparent() {
+        // The original treats pure-black overlay pixels as transparent, so
+        // frame1 must show through untouched.
+        let f1 = solid_frame([10, 20, 30, 40]);
+        let f2 = solid_frame([0, 0, 0, 255]);
+        let out = blend_frames(&f1, &f2, 1.0);
+        let data = out.data.as_ref().unwrap();
+        assert_eq!(&data[0..4], &[10, 20, 30, 40]);
+    }
 }
