@@ -409,7 +409,7 @@ pub struct BlendedShipImages {
 }
 
 /// Result of the last round (for end-round message display).
-#[derive(Resource, Default)]
+#[derive(Resource, Default, Clone)]
 pub struct RoundResult {
     pub hit_player: u8,
     pub self_hit: bool,

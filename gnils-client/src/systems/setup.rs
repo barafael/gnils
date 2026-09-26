@@ -216,6 +216,10 @@ fn spawn_hud_line(
     });
 }
 
+/// Width of the end-of-round panel's text column, matching the original's
+/// 450-wide box with its content inset to x=50..399.
+pub(crate) const END_ROUND_WIDTH: f32 = 349.0;
+
 /// The gap between the original's "Angle:" and "Power:" readouts, which it
 /// drew at fixed x positions so the digits never shift as the values change.
 const ANGLE_COLUMN_WIDTH: f32 = 113.0;
@@ -355,10 +359,16 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
                 ))
                 .with_children(|box_parent| {
                     box_parent.spawn((
-                        Text::new(""),
-                        hud_font(font, HUD_FONT_SIZE),
-                        TextColor(Color::WHITE),
-                        UiDimOverlay, // reuse as marker for the text node
+                        Node {
+                            // The original's panel is 450 wide with its text
+                            // between x=50 and x=399.
+                            width: Val::Px(END_ROUND_WIDTH),
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            row_gap: Val::Px(6.0),
+                            ..default()
+                        },
+                        UiEndRoundColumn,
                     ));
                 });
         });

@@ -238,14 +238,16 @@ pub fn handle_missile_impact(
                 *round_result = RoundResult {
                     hit_player: hit_id,
                     self_hit: killed_self,
-                    hit_score: if killed_self { -SELF_HIT } else { HIT_SCORE },
+                    // Shown as the original showed it: the self-hit is a
+                    // positive figure that the message says is deducted.
+                    hit_score: if killed_self { SELF_HIT } else { HIT_SCORE },
                     quick_bonus,
                     power_penalty: pen,
                     total_score: total_delta,
                     message: if killed_self {
-                        format!("{} hit themselves!", name_of(last))
+                        format!("{} killed self", name_of(last))
                     } else {
-                        format!("{} hits {}!", name_of(last), name_of(hit_id))
+                        format!("{} killed {}", name_of(last), name_of(hit_id))
                     },
                 };
 

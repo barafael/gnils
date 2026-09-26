@@ -284,79 +284,166 @@ pub fn update_round_overlay(
     }
 }
 
-/// Show/hide the end-round message box during round_over.
+/// Show the end-of-round panel and lay it out the way the original did:
+/// a heading when the game is over, who shot whom, the score breakdown with
+/// its values flush right, what it came to, and how to carry on.
+///
+/// The rows are rebuilt once per result, not per frame — the last line
+/// carries a live countdown in network games and is written in place.
 #[allow(clippy::too_many_arguments)]
 pub fn update_round_over_display(
     turn: Res<TurnState>,
     round_result: Res<RoundResult>,
     net_mode: Res<NetworkMode>,
     advance: Res<RoundAdvance>,
-    mut container_q: Query<&mut Visibility, With<UiEndRoundMsg>>,
-    mut text_q: Query<&mut Text, With<UiDimOverlay>>,
     players: Query<&Player>,
     net: Res<gnils_net::NetState>,
+    mut container_q: Query<&mut Visibility, With<UiEndRoundMsg>>,
+    column_q: Query<Entity, With<UiEndRoundColumn>>,
+    row_q: Query<Entity, With<UiEndRoundRow>>,
+    mut prompt_q: Query<&mut Text, With<UiEndRoundPrompt>>,
+    mut commands: Commands,
 ) {
     let show_msg = turn.round_over
         && turn.show_round <= 30.0
         && turn.show_planets <= 0.0
         && round_result.hit_player > 0;
-
     for mut vis in container_q.iter_mut() {
         *vis = visibility(show_msg);
     }
 
-    if !show_msg
-        || !(round_result.is_changed() || turn.is_changed() || advance.is_changed())
-    {
+    // The countdown ticks every frame; only its line changes.
+    let prompt = match (turn.game_over, net_mode.is_network()) {
+        (true, true) => next_step_text(&advance, "New game starting in", "New game starting..."),
+        (true, false) => "Press fire for a new game or escape for the menu".to_string(),
+        (false, true) => next_step_text(&advance, "Next round in", "Next round starting..."),
+        (false, false) => "Press fire for a new round or escape for the menu".to_string(),
+    };
+    for mut text in prompt_q.iter_mut() {
+        if text.as_str() != prompt {
+            **text = prompt.clone();
+        }
+    }
+
+    if !round_result.is_changed() {
         return;
     }
-
-    let mut lines = vec![round_result.message.clone(), String::new()];
-    if round_result.self_hit {
-        lines.push(format!("Hit self:              {}", round_result.hit_score));
-    } else {
-        lines.push(format!("Hit opponent:        {}", round_result.hit_score));
-        if round_result.quick_bonus > 0 {
-            lines.push(format!("Quickhit bonus:    {}", round_result.quick_bonus));
-        }
-        if round_result.power_penalty != 0 {
-            lines.push(format!("Power penalty:     {}", round_result.power_penalty));
-        }
-    }
-    lines.push(String::new());
-    lines.push(format!("{} added to score", round_result.total_score));
-
-    if turn.game_over {
-        let (p1, p2) = scores(players.iter());
-        let winner = match p1.cmp(&p2) {
-            std::cmp::Ordering::Greater => Some(1),
-            std::cmp::Ordering::Less => Some(2),
-            std::cmp::Ordering::Equal => None,
-        };
-        lines.push(String::new());
-        lines.push(match winner {
-            Some(id) => format!(
-                "{} has won the game",
-                net.player_name(id)
-                    .unwrap_or(if id == 1 { "Player 1" } else { "Player 2" })
-            ),
-            None => "The game has ended in a tie".to_string(),
-        });
+    let Ok(column) = column_q.single() else {
+        return;
+    };
+    for entity in row_q.iter() {
+        commands.entity(entity).despawn();
     }
 
-    lines.push(String::new());
-    lines.push(match (turn.game_over, net_mode.is_network()) {
-        (true, true) => next_step_text(&advance, "New game starting in", "New game starting"),
-        (true, false) => "Press fire for a new game or escape for the menu".to_string(),
-        (false, true) => next_step_text(&advance, "Next round in", "Next round starting"),
-        (false, false) => "Press fire for a new round or escape for the menu".to_string(),
+    let name_of = |id: u8| {
+        net.player_name(id)
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("Player {id}"))
+    };
+    let (p1, p2) = scores(players.iter());
+    let game_over = turn.game_over;
+    let result = round_result.clone();
+
+    commands.entity(column).with_children(|parent| {
+        if game_over {
+            parent.spawn((
+                Text::new("Game over"),
+                TextFont {
+                    font_size: FontSize::Px(MENU_HEADING_SIZE),
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                UiEndRoundRow,
+            ));
+        }
+
+        parent.spawn((
+            Text::new(result.message.clone()),
+            panel_font(),
+            TextColor(Color::WHITE),
+            UiEndRoundRow,
+        ));
+
+        // The score breakdown: label left, value flush right. A self-hit is
+        // a flat deduction, so it has no bonus or penalty to show.
+        let mut rows = vec![if result.self_hit {
+            ("Hit self:", result.hit_score)
+        } else {
+            ("Hit opponent:", result.hit_score)
+        }];
+        if !result.self_hit {
+            rows.push(("Quickhit bonus:", result.quick_bonus));
+            rows.push(("Power penalty:", result.power_penalty));
+        }
+        for (label, value) in rows {
+            parent
+                .spawn((
+                    Node {
+                        width: Val::Px(crate::systems::setup::END_ROUND_WIDTH),
+                        flex_direction: FlexDirection::Row,
+                        justify_content: JustifyContent::SpaceBetween,
+                        ..default()
+                    },
+                    UiEndRoundRow,
+                ))
+                .with_children(|row| {
+                    row.spawn((Text::new(label), panel_font(), TextColor(Color::WHITE)));
+                    row.spawn((
+                        Text::new(value.to_string()),
+                        panel_font(),
+                        TextColor(Color::WHITE),
+                    ));
+                });
+        }
+
+        parent.spawn((
+            Text::new(if result.self_hit {
+                format!("{} deducted from score", -result.total_score)
+            } else {
+                format!("{} added to score", result.total_score)
+            }),
+            panel_font(),
+            TextColor(Color::WHITE),
+            UiEndRoundRow,
+        ));
+
+        if game_over {
+            let winner = match p1.cmp(&p2) {
+                std::cmp::Ordering::Greater => Some(1),
+                std::cmp::Ordering::Less => Some(2),
+                std::cmp::Ordering::Equal => None,
+            };
+            parent.spawn((
+                Text::new(match winner {
+                    Some(id) => format!("{} has won the game", name_of(id)),
+                    None => "The game has ended in a tie".to_string(),
+                }),
+                panel_font(),
+                TextColor(Color::WHITE),
+                UiEndRoundRow,
+            ));
+        }
+
+        parent.spawn((
+            Text::new(prompt.clone()),
+            panel_font(),
+            TextColor(Color::WHITE),
+            UiEndRoundRow,
+            UiEndRoundPrompt,
+        ));
     });
+}
 
-    let joined = lines.join("\n");
-    for mut text in text_q.iter_mut() {
-        **text = joined.clone();
+/// The panel's body text, at the original's HUD size.
+fn panel_font() -> TextFont {
+    TextFont {
+        font_size: FontSize::Px(MENU_FONT_SIZE),
+        ..default()
     }
 }
+
+/// The original set the panel's "Game over" heading in its menu font.
+const MENU_HEADING_SIZE: f32 = 26.0;
 
 /// The network auto-advance line: a countdown while one is running.
 fn next_step_text(advance: &RoundAdvance, counting: &str, waiting: &str) -> String {

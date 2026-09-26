@@ -140,11 +140,22 @@ pub enum HudSlot {
 #[derive(Component)]
 pub struct UiRoundOverlay;
 
-#[derive(Component)]
-pub struct UiDimOverlay;
-
+/// The end-of-round panel's full-screen container.
 #[derive(Component)]
 pub struct UiEndRoundMsg;
+
+/// The column inside the panel's box; its children are the rows.
+#[derive(Component)]
+pub struct UiEndRoundColumn;
+
+/// One rebuilt row of the panel.
+#[derive(Component)]
+pub struct UiEndRoundRow;
+
+/// The panel's last line. It carries a live countdown in network games, so
+/// it is written in place rather than rebuilt with the rest.
+#[derive(Component)]
+pub struct UiEndRoundPrompt;
 
 /// Settings menu overlay (the dimmed full-screen backdrop).
 #[derive(Component)]
