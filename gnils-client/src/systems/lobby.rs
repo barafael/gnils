@@ -723,7 +723,9 @@ fn lobby_keyboard_input(
 
     // The shared-room lobby.
     if phase == GamePhase::WaitingForOpponent {
-        nav(&mut lobby.selected, ROOM_ROWS, &keys);
+        if let Some(row) = nav(lobby.selected, ROOM_ROWS, &keys) {
+                lobby.selected = row;
+            }
         if just(KeyCode::Enter) {
             match lobby.selected {
                 seat @ (0 | 1) => seat_action(seat as u8 + 1, &mut room, &mut status),
@@ -750,7 +752,9 @@ fn lobby_keyboard_input(
 
     match lobby.screen {
         LobbyScreen::Main => {
-            nav(&mut lobby.selected, MAIN_OPTIONS.len(), &keys);
+            if let Some(row) = nav(lobby.selected, MAIN_OPTIONS.len(), &keys) {
+                lobby.selected = row;
+            }
             if just(KeyCode::Enter) || just(KeyCode::Space) {
                 match lobby.selected {
                     0 => {
@@ -771,7 +775,9 @@ fn lobby_keyboard_input(
         }
 
         LobbyScreen::NetworkSub => {
-            nav(&mut lobby.selected, NETWORK_OPTIONS.len(), &keys);
+            if let Some(row) = nav(lobby.selected, NETWORK_OPTIONS.len(), &keys) {
+                lobby.selected = row;
+            }
             if just(KeyCode::Escape) {
                 back_to_main(&mut lobby, 1);
             }
@@ -830,7 +836,9 @@ fn lobby_keyboard_input(
 
         LobbyScreen::Settings => {
             const BACK_ROW: usize = 9;
-            nav(&mut lobby.selected, BACK_ROW + 1, &keys);
+            if let Some(row) = nav(lobby.selected, BACK_ROW + 1, &keys) {
+                lobby.selected = row;
+            }
             if just(KeyCode::Escape) || (just(KeyCode::Enter) && lobby.selected == BACK_ROW) {
                 back_to_main(&mut lobby, 2);
             }

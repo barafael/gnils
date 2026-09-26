@@ -146,6 +146,8 @@ pub struct UiMenuOverlay;
 #[derive(Component)]
 pub struct UiMenuColumn;
 
-/// One row of the settings menu (label column + optional value).
+/// A node of the settings menu's body — a setting row, or the heading and
+/// hint that frame them. Everything carrying this is despawned and rebuilt
+/// together, so anything spawned into the menu without it would pile up.
 #[derive(Component)]
 pub struct UiMenuRow;

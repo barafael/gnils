@@ -9,15 +9,23 @@ use crate::resources::*;
 use crate::systems::network::PendingEdits;
 use crate::systems::round::RoundReset;
 
-/// Wrap-around Up/Down movement over a list of `n` rows. Every keyboard menu
-/// in the game navigates this way.
-pub(crate) fn nav(selected: &mut usize, n: usize, keys: &ButtonInput<KeyCode>) {
-    if keys.just_pressed(KeyCode::ArrowDown) {
-        *selected = (*selected + 1) % n;
-    }
-    if keys.just_pressed(KeyCode::ArrowUp) {
-        *selected = (*selected + n - 1) % n;
-    }
+/// Where Up/Down move the cursor in a list of `n` rows, wrapping at both
+/// ends. Every keyboard menu in the game navigates this way.
+///
+/// `None` means neither key was pressed. Callers must then leave their menu
+/// resource untouched: writing to it through a `ResMut` marks it changed even
+/// when the value is identical, and the menus redraw on that signal.
+pub(crate) fn nav(selected: usize, n: usize, keys: &ButtonInput<KeyCode>) -> Option<usize> {
+    let step = match (
+        keys.just_pressed(KeyCode::ArrowDown),
+        keys.just_pressed(KeyCode::ArrowUp),
+    ) {
+        (true, false) => 1,
+        (false, true) => n - 1,
+        // Neither, or both in one frame, which cancel out.
+        _ => return None,
+    };
+    Some((selected + step) % n)
 }
 
 /// The aiming keys, in the order [`AimRepeat`] stores their timers.
@@ -189,7 +197,9 @@ pub fn menu_nav_input(
         return;
     }
 
-    nav(&mut menu.selected, MENU_ITEMS.len(), &keys);
+    if let Some(row) = nav(menu.selected, MENU_ITEMS.len(), &keys) {
+        menu.selected = row;
+    }
 
     let left = keys.just_pressed(KeyCode::ArrowLeft);
     let activate = left
@@ -271,5 +281,42 @@ pub(crate) fn toggle_fullscreen(settings: &mut GameSettings, windows: &mut Query
         } else {
             WindowMode::Windowed
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn with_keys(pressed: &[KeyCode]) -> ButtonInput<KeyCode> {
+        let mut keys = ButtonInput::default();
+        for &k in pressed {
+            keys.press(k);
+        }
+        keys
+    }
+
+    /// An idle frame must report no movement at all. Returning the unchanged
+    /// row instead would have callers write it back through a `ResMut`, which
+    /// marks the resource changed and makes the menus rebuild every frame.
+    #[test]
+    fn nav_reports_nothing_when_no_arrow_is_pressed() {
+        assert_eq!(nav(3, 12, &with_keys(&[])), None);
+        assert_eq!(nav(3, 12, &with_keys(&[KeyCode::Enter])), None);
+        // Both arrows in one frame cancel out, so nothing moves.
+        assert_eq!(
+            nav(3, 12, &with_keys(&[KeyCode::ArrowUp, KeyCode::ArrowDown])),
+            None
+        );
+    }
+
+    #[test]
+    fn nav_wraps_at_both_ends() {
+        let down = with_keys(&[KeyCode::ArrowDown]);
+        let up = with_keys(&[KeyCode::ArrowUp]);
+        assert_eq!(nav(0, 12, &down), Some(1));
+        assert_eq!(nav(11, 12, &down), Some(0));
+        assert_eq!(nav(1, 12, &up), Some(0));
+        assert_eq!(nav(0, 12, &up), Some(11));
     }
 }

@@ -397,6 +397,7 @@ pub fn update_menu_display(
             Text::new("-- SETTINGS --"),
             menu_font(),
             TextColor(Color::WHITE),
+            UiMenuRow,
         ));
         for item in MENU_ITEMS {
             let color = if item == selected {
@@ -425,6 +426,7 @@ pub fn update_menu_display(
             Text::new("Up/Down: navigate   Enter/Left/Right: change   Esc: close"),
             menu_font(),
             TextColor(Color::WHITE),
+            UiMenuRow,
         ));
     });
 }
