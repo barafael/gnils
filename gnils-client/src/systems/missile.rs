@@ -40,6 +40,7 @@ pub fn fire_missile(
         body.flight = settings.max_flight;
 
         marker.active = true;
+        marker.draw_last_segment = false;
         marker.trail_color = trail_color;
         marker.power_penalty = power_penalty;
 
@@ -56,7 +57,7 @@ pub fn fire_missile(
 
 /// Draw the missile trail on the trail canvas.
 pub fn draw_missile_trail(
-    missile_q: Query<(&GravityBody, &MissileMarker)>,
+    mut missile_q: Query<(&GravityBody, &mut MissileMarker)>,
     trail_canvas: Res<TrailCanvas>,
     mut images: ResMut<Assets<Image>>,
     turn: Res<TurnState>,
@@ -69,8 +70,10 @@ pub fn draw_missile_trail(
     };
     let image = image.into_inner();
 
-    for (body, marker) in missile_q.iter() {
-        if marker.active {
+    for (body, mut marker) in missile_q.iter_mut() {
+        // Runs after the collision, so `pos` is already the point the shot
+        // stopped at and the trail ends exactly there.
+        if marker.active || std::mem::take(&mut marker.draw_last_segment) {
             let (x0, y0) = trail_canvas.to_pixel(body.last_pos);
             let (x1, y1) = trail_canvas.to_pixel(body.pos);
             trail::draw_aa_line(image, x0, y0, x1, y1, marker.trail_color);

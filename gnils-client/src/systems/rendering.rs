@@ -22,6 +22,14 @@ pub fn update_ui_scale(windows: Query<&Window, Changed<Window>>, mut ui_scale: R
     }
 }
 
+/// The original ran at a fixed 30 fps and stepped its animations once per
+/// frame. Everything timed against that cadence scales by `dt * this`, so it
+/// runs at the original speed whatever the display does.
+const FRAMES_PER_SEC: f64 = 30.0;
+
+/// What the original divided `show_round` by on each of those frames.
+const ROUND_OVERLAY_DECAY: f64 = 1.04;
+
 /// Update bounce border animation.
 pub fn update_bounce_animation(time: Res<Time>, mut bounce: ResMut<BounceAnimation>) {
     let dt30 = time.delta_secs() * 30.0;
@@ -66,6 +74,7 @@ pub fn update_ui_visibility(
 
 /// Handle invisible planets mode: hide during play, fade in on round over.
 pub fn update_planet_visibility(
+    time: Res<Time>,
     mut turn: ResMut<TurnState>,
     settings: Res<GameSettings>,
     mut planets: Query<(&mut Sprite, &Planet)>,
@@ -83,7 +92,7 @@ pub fn update_planet_visibility(
         (true, true) => {
             let alpha = ((255.0 - turn.show_planets * 2.55) / 255.0).clamp(0.0, 1.0);
             paint_planets(&mut planets, alpha as f32, true);
-            turn.show_planets -= 0.5;
+            turn.show_planets -= time.delta_secs_f64() * FRAMES_PER_SEC;
         }
         (true, false) => paint_planets(&mut planets, 1.0, false),
         (false, _) => paint_planets(&mut planets, 0.0, false),
@@ -231,6 +240,7 @@ pub fn draw_zoom_view(
 /// so no disjointness filters are needed.
 #[allow(clippy::type_complexity)]
 pub fn update_round_overlay(
+    time: Res<Time>,
     mut turn: ResMut<TurnState>,
     mut container_q: Query<(&mut Visibility, &Children), With<UiRoundOverlay>>,
     mut text_q: Query<(&mut Text, &mut TextFont, &mut TextColor)>,
@@ -263,7 +273,7 @@ pub fn update_round_overlay(
     }
 
     if show {
-        turn.show_round /= 1.02;
+        turn.show_round /= ROUND_OVERLAY_DECAY.powf(time.delta_secs_f64() * FRAMES_PER_SEC);
     }
 }
 

@@ -145,6 +145,7 @@ pub fn setup_missile(mut commands: Commands, assets: Res<GameAssets>) {
             trail_color: PLAYER1_COLOR,
             power_penalty: 0,
             active: false,
+            draw_last_segment: false,
         },
         GravityBody {
             pos: (0.0, 0.0),

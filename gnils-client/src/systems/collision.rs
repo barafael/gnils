@@ -67,6 +67,7 @@ pub fn missile_collision(
                 hit_type,
             });
             marker.active = false;
+            marker.draw_last_segment = !planet.is_blackhole;
             return;
         }
 
@@ -77,6 +78,7 @@ pub fn missile_collision(
                 hit_type: HitType::Ship(hit_id),
             });
             marker.active = false;
+            marker.draw_last_segment = true;
             return;
         }
 

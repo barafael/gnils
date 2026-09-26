@@ -133,10 +133,15 @@ fn main() {
         .add_systems(
             FixedUpdate,
             (
-                (physics::missile_gravity, missile::draw_missile_trail)
+                // The original moves the shot, resolves what it ran into,
+                // then draws the trail to wherever it came to rest.
+                (
+                    physics::missile_gravity,
+                    collision::missile_collision,
+                    missile::draw_missile_trail,
+                )
                     .chain()
                     .run_if(in_state(GamePhase::Firing)),
-                collision::missile_collision.run_if(in_state(GamePhase::Firing)),
                 (
                     physics::particle_gravity,
                     physics::particle_bounce,

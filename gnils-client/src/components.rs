@@ -92,6 +92,10 @@ pub struct MissileMarker {
     pub trail_color: (u8, u8, u8),
     pub power_penalty: i32,
     pub active: bool,
+    /// An impact stopped the missile this tick, and the trail should still
+    /// reach the point where it stopped. Only a blackhole swallows a shot
+    /// without leaving that last mark.
+    pub draw_last_segment: bool,
 }
 
 #[derive(Component)]
