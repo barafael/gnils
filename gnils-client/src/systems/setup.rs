@@ -48,7 +48,7 @@ pub fn setup_camera(mut commands: Commands) {
         // World only: the dim backdrop and the gizmo frames belong to the
         // main view, and drawing them again inside the minimap would just
         // paint over it.
-        RenderLayers::layer(WORLD_LAYER),
+        RenderLayers::from_layers(&[WORLD_LAYER, MINIMAP_LAYER]),
         MinimapCamera,
     ));
 }
@@ -169,6 +169,15 @@ pub fn setup_zoom_dim(mut commands: Commands) {
 }
 
 pub fn setup_missile(mut commands: Commands, assets: Res<GameAssets>) {
+    // The shot the minimap draws, which only its camera can see.
+    commands.spawn((
+        Sprite::from_image(assets.shot.clone()),
+        Transform::from_xyz(0.0, 0.0, 6.0).with_scale(Vec3::splat(ZOOM_MISSILE_SCALE)),
+        Visibility::Hidden,
+        RenderLayers::layer(MINIMAP_LAYER),
+        MinimapMissile,
+    ));
+
     commands.spawn((
         Sprite::from_image(assets.shot.clone()),
         Transform::from_xyz(0.0, 0.0, 6.0),

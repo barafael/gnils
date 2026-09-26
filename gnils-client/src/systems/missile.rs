@@ -100,3 +100,24 @@ pub fn update_missile_visibility(
         *vis = visibility(turn.firing && marker.active && on_screen);
     }
 }
+
+/// Keep the minimap's stand-in for the shot on top of the real one. Its own
+/// camera decides whether anyone sees it, so this only has to hide it when
+/// there is no shot in the air.
+pub fn sync_minimap_missile(
+    missile_q: Query<(&GravityBody, &MissileMarker)>,
+    mut minimap_q: Query<(&mut Transform, &mut Visibility), With<MinimapMissile>>,
+    turn: Res<TurnState>,
+) {
+    let shot = missile_q
+        .iter()
+        .find(|(_, marker)| marker.active)
+        .map(|(body, _)| body.pos);
+    for (mut transform, mut vis) in minimap_q.iter_mut() {
+        *vis = visibility(turn.firing && shot.is_some());
+        if let Some(pos) = shot {
+            transform.translation.x = pos.0 as f32;
+            transform.translation.y = pos.1 as f32;
+        }
+    }
+}

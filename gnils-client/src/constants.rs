@@ -36,6 +36,8 @@ pub const WORLD_LAYER: usize = 0;
 /// Things that belong to the main view alone — the dim behind the minimap
 /// and every gizmo. The minimap must not redraw these over itself.
 pub const OVERLAY_LAYER: usize = 1;
+/// Things only the minimap draws: its stand-in for the shot.
+pub const MINIMAP_LAYER: usize = 2;
 
 // ── Zoom minimap ────────────────────────────────────────────────────────────
 
@@ -43,3 +45,7 @@ pub const OVERLAY_LAYER: usize = 1;
 pub const ZOOM_VIEW: bevy::math::Vec2 = bevy::math::Vec2::new(600.0, 450.0);
 /// How much further out the minimap sees than the main view.
 pub const ZOOM_FACTOR: f32 = 4.0;
+/// The original drew the shot into the zoom at a third of its size, rather
+/// than the quarter that the zoom's own scale would give it, so it stays
+/// findable out there. Scaling the sprite by the difference does the same.
+pub const ZOOM_MISSILE_SCALE: f32 = ZOOM_FACTOR / 3.0;

@@ -115,6 +115,12 @@ pub struct ZoomDimSprite;
 #[derive(Component)]
 pub struct MinimapCamera;
 
+/// The minimap's own copy of the shot. The real one is hidden the moment it
+/// leaves the main view — which is exactly when the minimap appears — so the
+/// minimap draws its own, and can size it to stay visible out there.
+#[derive(Component)]
+pub struct MinimapMissile;
+
 #[derive(Component)]
 pub struct TrailSprite;
 
