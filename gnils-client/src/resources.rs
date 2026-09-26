@@ -357,9 +357,25 @@ pub struct RoundAdvance(pub Option<f32>);
 
 // ── Asset / rendering resources ────────────────────────────────────────────
 
+/// The canvas the missile trail is painted onto, one pixel per world unit,
+/// centred on the origin.
+///
+/// It covers everything the camera can see, not just the 4:3 playfield: the
+/// window may be any shape, and a line drawn past the canvas edge is clipped
+/// away, which would leave the trail ending in mid-air.
 #[derive(Resource)]
 pub struct TrailCanvas {
     pub image_handle: Handle<Image>,
+    pub size: UVec2,
+}
+
+impl TrailCanvas {
+    /// A world position as a pixel position on the canvas (pixels run Y-down
+    /// from the top-left; the world is Y-up from the centre).
+    pub fn to_pixel(&self, pos: (f64, f64)) -> (f64, f64) {
+        let half = self.size.as_vec2() / 2.0;
+        (pos.0 + half.x as f64, half.y as f64 - pos.1)
+    }
 }
 
 #[derive(Resource)]
@@ -457,4 +473,30 @@ pub struct AimRepeat(pub [KeyRepeatTimer; 4]);
 pub struct KeyRepeatTimer {
     /// `None` = key not held; `Some(secs)` = countdown until next step fires.
     pub delay: Option<f32>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_trail_canvas_maps_the_world_onto_its_centre() {
+        // A 16:9 window: the camera shows well past the 4:3 playfield's
+        // x = +/-400, and the canvas has to stretch with it.
+        let canvas = TrailCanvas {
+            image_handle: Handle::default(),
+            size: UVec2::new(1068, 600),
+        };
+        assert_eq!(canvas.to_pixel((0.0, 0.0)), (534.0, 300.0));
+
+        // Y runs the other way: the top of the world is pixel row zero.
+        let (_, top) = canvas.to_pixel((0.0, 300.0));
+        assert_eq!(top, 0.0);
+
+        // The far corner of a wide view still lands on the canvas. Fixed at
+        // 800x600 this clipped, and the trail stopped in mid-air.
+        let (x, y) = canvas.to_pixel((-533.0, -299.0));
+        assert!((0.0..1068.0).contains(&x), "x off canvas: {x}");
+        assert!((0.0..600.0).contains(&y), "y off canvas: {y}");
+    }
 }

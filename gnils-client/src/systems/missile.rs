@@ -71,16 +71,9 @@ pub fn draw_missile_trail(
 
     for (body, marker) in missile_q.iter() {
         if marker.active {
-            // The trail canvas is a pixel buffer (0..800, 0..600, Y-down);
-            // the world is center-origin and Y-up.
-            trail::draw_aa_line(
-                image,
-                body.last_pos.0 + 400.0,
-                300.0 - body.last_pos.1,
-                body.pos.0 + 400.0,
-                300.0 - body.pos.1,
-                marker.trail_color,
-            );
+            let (x0, y0) = trail_canvas.to_pixel(body.last_pos);
+            let (x1, y1) = trail_canvas.to_pixel(body.pos);
+            trail::draw_aa_line(image, x0, y0, x1, y1, marker.trail_color);
         }
     }
 }

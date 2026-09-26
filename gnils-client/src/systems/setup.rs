@@ -23,7 +23,7 @@ pub fn setup_camera(mut commands: Commands) {
 }
 
 /// A blank CPU-side RGBA canvas the game draws into each frame.
-fn blank_image(width: u32, height: u32) -> Image {
+pub(crate) fn blank_image(width: u32, height: u32) -> Image {
     Image::new_fill(
         Extent3d {
             width,
@@ -63,12 +63,16 @@ pub fn load_assets(
 }
 
 pub fn setup_trail_canvas(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    let handle = images.add(blank_image(WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32));
+    // Sized for the 4:3 playfield to begin with; `resize_trail_canvas`
+    // grows it to whatever the window actually shows.
+    let size = UVec2::new(WINDOW_WIDTH as u32, WINDOW_HEIGHT as u32);
+    let handle = images.add(blank_image(size.x, size.y));
 
     commands.spawn((
         Sprite {
             image: handle.clone(),
             color: Color::srgba(1.0, 1.0, 1.0, 125.0 / 255.0),
+            custom_size: Some(size.as_vec2()),
             ..default()
         },
         Transform::from_xyz(0.0, 0.0, 3.0),
@@ -77,6 +81,7 @@ pub fn setup_trail_canvas(mut commands: Commands, mut images: ResMut<Assets<Imag
 
     commands.insert_resource(TrailCanvas {
         image_handle: handle,
+        size,
     });
 }
 

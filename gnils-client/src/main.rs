@@ -165,6 +165,7 @@ fn main() {
                 missile::update_missile_ui,
                 rendering::update_bounce_animation,
                 rendering::update_view_size,
+                rendering::resize_trail_canvas,
                 rendering::update_ui_scale,
                 rendering::draw_bounce_border,
                 rendering::draw_zoom_view,

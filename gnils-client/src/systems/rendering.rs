@@ -134,6 +134,45 @@ pub fn update_view_size(
     }
 }
 
+/// Grow the trail canvas to cover everything the camera shows.
+///
+/// The playfield is 4:3 but the window need not be, and the camera reveals
+/// more world on the long axis. A trail line drawn past the canvas edge is
+/// clipped, so a canvas fixed at 4:3 leaves the shot's trace stopping in
+/// mid-air. Checked every frame rather than on `Changed<Window>` so a canvas
+/// that somehow falls out of step corrects itself.
+pub fn resize_trail_canvas(
+    windows: Query<&Window>,
+    mut trail: ResMut<TrailCanvas>,
+    mut images: ResMut<Assets<Image>>,
+    mut sprite_q: Query<&mut Sprite, With<TrailSprite>>,
+) {
+    let Ok(window) = windows.single() else {
+        return;
+    };
+    if window.width() <= 0.0 || window.height() <= 0.0 {
+        return;
+    }
+    let size = visible_world_size(window).ceil().as_uvec2();
+    if size == trail.size {
+        return;
+    }
+    let Some(mut image) = images.get_mut(&trail.image_handle) else {
+        return;
+    };
+    // Resizing starts the trail over; it only happens when the window shape
+    // changes, and a round begins with a cleared canvas anyway.
+    *image = crate::systems::setup::blank_image(size.x, size.y);
+    trail.size = size;
+
+    // Say the size on the sprite rather than leaning on its fall-back to the
+    // texture's: that fall-back leaves the culling bounds stale, since they
+    // are only recomputed when the sprite itself changes.
+    for mut sprite in sprite_q.iter_mut() {
+        sprite.custom_size = Some(size.as_vec2());
+    }
+}
+
 /// Draw a zoom/minimap view when the missile is off-screen during firing.
 /// A full-screen dim sprite (ZoomDimSprite) is toggled, and gizmos draw the
 /// overlay borders.
