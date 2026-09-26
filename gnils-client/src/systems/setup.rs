@@ -195,26 +195,30 @@ fn overlay() -> Node {
     }
 }
 
-/// A HUD text line centered across the window: a full-width container node
-/// with the marked Text as its only child. Systems address the text through
-/// the marker; visibility is toggled on the child.
-fn spawn_hud_text(
+/// One HUD text line: a full-width row pinned to an edge, with the text
+/// centred inside it. A bare Text node keeps its content size, so it has to
+/// sit in a stretching container for centring to mean anything.
+fn spawn_hud_line(
     commands: &mut Commands,
     font: &Handle<Font>,
-    container: Node,
-    marker: impl Component,
+    row: Node,
+    slot: HudSlot,
     initial: Visibility,
 ) {
-    commands.spawn(container).with_children(|parent| {
+    commands.spawn(row).with_children(|parent| {
         parent.spawn((
             Text::new(""),
             hud_font(font, HUD_FONT_SIZE),
             TextColor(Color::WHITE),
             initial,
-            marker,
+            slot,
         ));
     });
 }
+
+/// The gap between the original's "Angle:" and "Power:" readouts, which it
+/// drew at fixed x positions so the digits never shift as the values change.
+const ANGLE_COLUMN_WIDTH: f32 = 113.0;
 
 pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
     let font = &assets.font;
@@ -230,7 +234,7 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
             left: Val::Px(5.0),
             ..default()
         },
-        UiScoreP1,
+        HudSlot::ScoreP1,
     ));
     commands.spawn((
         Text::new("0  --  Player 2"),
@@ -242,40 +246,60 @@ pub fn setup_ui(mut commands: Commands, assets: Res<GameAssets>) {
             right: Val::Px(6.0),
             ..default()
         },
-        UiScoreP2,
+        HudSlot::ScoreP2,
     ));
 
-    // Centered HUD lines. The text must be a child of a stretching
-    // container: a bare Text node keeps its content size, so
-    // justify_content on it would never center anything.
-    let top = |px| hud_row(Val::Px(px), Val::Auto);
-    spawn_hud_text(
+    // Angle and power share the top-centre row in two fixed-width columns,
+    // so a digit changing does not shuffle the line about.
+    commands
+        .spawn(hud_row(Val::Px(5.0), Val::Auto))
+        .with_children(|row| {
+            for (slot, width) in [
+                (HudSlot::Angle, ANGLE_COLUMN_WIDTH),
+                (HudSlot::Power, ANGLE_COLUMN_WIDTH),
+            ] {
+                row.spawn((
+                    Node {
+                        width: Val::Px(width),
+                        ..default()
+                    },
+                    Text::new(""),
+                    hud_font(font, HUD_FONT_SIZE),
+                    TextColor(Color::WHITE),
+                    slot,
+                ));
+            }
+        });
+
+    // The shot's power penalty takes the top-centre row while it is in
+    // flight; the round counter and the timeout share the bottom one.
+    spawn_hud_line(
         &mut commands,
         font,
-        top(5.0),
-        UiAnglePower,
-        Visibility::Visible,
+        hud_row(Val::Px(5.0), Val::Auto),
+        HudSlot::PowerPenalty,
+        Visibility::Hidden,
     );
-    spawn_hud_text(
+    spawn_hud_line(
         &mut commands,
         font,
         hud_row(Val::Auto, Val::Px(6.0)),
-        UiRoundInfo,
+        HudSlot::RoundInfo,
         Visibility::Visible,
     );
-    spawn_hud_text(
+    spawn_hud_line(
         &mut commands,
         font,
-        top(5.0),
-        UiMissileStatus,
+        hud_row(Val::Auto, Val::Px(6.0)),
+        HudSlot::Timeout,
         Visibility::Hidden,
     );
     // Turn banner (network games only): whose turn it is while aiming.
-    spawn_hud_text(
+    spawn_hud_line(
         &mut commands,
         font,
-        top(25.0),
-        UiTurnBanner,
+        hud_row(Val::Px(25.0), Val::Auto),
+        HudSlot::TurnBanner,
         Visibility::Hidden,
     );
 

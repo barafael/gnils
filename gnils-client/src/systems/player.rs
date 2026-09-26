@@ -1,4 +1,3 @@
-use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use gnils_protocol::compute_launch_point;
 
@@ -115,55 +114,58 @@ pub fn update_ship_explosion(
     }
 }
 
-/// One HUD line's text. Bevy hands out several `&mut Text` at once only when
-/// the queries are provably disjoint, so each line excludes the other three.
-type HudLine<'w, 's, Mine, A, B, C> =
-    Query<'w, 's, &'static mut Text, (With<Mine>, Without<A>, Without<B>, Without<C>)>;
-
-/// The four HUD text lines, bundled to keep their disjointness filters out of
-/// the system signature.
-#[derive(SystemParam)]
-pub struct HudTexts<'w, 's> {
-    score_p1: HudLine<'w, 's, UiScoreP1, UiScoreP2, UiAnglePower, UiRoundInfo>,
-    score_p2: HudLine<'w, 's, UiScoreP2, UiScoreP1, UiAnglePower, UiRoundInfo>,
-    angle_power: HudLine<'w, 's, UiAnglePower, UiScoreP1, UiScoreP2, UiRoundInfo>,
-    round_info: HudLine<'w, 's, UiRoundInfo, UiScoreP1, UiScoreP2, UiAnglePower>,
-}
-
-/// Update UI text for scores, angle/power and the round counter.
+/// Fill in every HUD line. One query over the slot component, so no
+/// disjointness filters are needed and the lines cannot fight over a node.
+///
+/// The bottom-centre row is shared: the original shows the round counter
+/// there, and the shot's remaining flight time in its place while firing.
 pub fn update_ui_text(
     players: Query<&Player>,
+    missiles: Query<(&GravityBody, &MissileMarker)>,
     turn: Res<TurnState>,
     settings: Res<GameSettings>,
     net: Res<gnils_net::NetState>,
-    mut hud: HudTexts,
+    mut hud: Query<(&mut Text, &HudSlot)>,
 ) {
     let (s1, s2) = scores(players.iter());
-    if let Ok(mut text) = hud.score_p1.single_mut() {
-        **text = format!("{}  --  {s1}", net.player_name(1).unwrap_or("Player 1"));
-    }
-    if let Ok(mut text) = hud.score_p2.single_mut() {
-        **text = format!("{s2}  --  {}", net.player_name(2).unwrap_or("Player 2"));
-    }
+    let aiming = players.iter().find(|p| p.id == turn.current_player);
+    let missile = missiles.iter().find(|(_, m)| m.active);
 
-    if !turn.firing
-        && !turn.round_over
-        && let Some(player) = players.iter().find(|p| p.id == turn.current_player)
-        && let Ok(mut text) = hud.angle_power.single_mut()
-    {
-        **text = format!(
-            "Angle: {:.2}  Power: {:.1}",
-            player.angle.to_degrees(),
-            player.power
-        );
-    }
-
-    if let Ok(mut text) = hud.round_info.single_mut() {
-        **text = if settings.max_rounds > 0 {
-            format!("Round {} of {}", turn.round, settings.max_rounds)
-        } else {
-            format!("Round {}", turn.round)
+    for (mut text, slot) in hud.iter_mut() {
+        let line = match slot {
+            HudSlot::ScoreP1 => {
+                format!("{}  --  {s1}", net.player_name(1).unwrap_or("Player 1"))
+            }
+            HudSlot::ScoreP2 => {
+                format!("{s2}  --  {}", net.player_name(2).unwrap_or("Player 2"))
+            }
+            // Held steady while a shot is in the air, so the readout does
+            // not twitch back to the next player mid-flight.
+            HudSlot::Angle | HudSlot::Power if turn.firing || turn.round_over => continue,
+            HudSlot::Angle => match aiming {
+                Some(p) => format!("Angle: {:.2}", p.angle.to_degrees()),
+                None => continue,
+            },
+            HudSlot::Power => match aiming {
+                Some(p) => format!("Power: {:.1}", p.power),
+                None => continue,
+            },
+            HudSlot::PowerPenalty => match missile {
+                Some((_, m)) => format!("Power penalty: {}", -m.power_penalty),
+                None => continue,
+            },
+            HudSlot::Timeout => match missile {
+                Some((body, _)) if body.flight >= 0 => format!("Timeout in {}", body.flight),
+                Some(_) => "Shot timed out...".to_string(),
+                None => continue,
+            },
+            HudSlot::RoundInfo if settings.max_rounds > 0 => {
+                format!("Round {} of {}", turn.round, settings.max_rounds)
+            }
+            HudSlot::RoundInfo => format!("Round {}", turn.round),
+            HudSlot::TurnBanner => continue,
         };
+        **text = line;
     }
 }
 
@@ -175,13 +177,13 @@ pub fn update_turn_banner(
     net: Res<gnils_net::NetState>,
     phase: Res<State<GamePhase>>,
     menu: Res<MenuOpen>,
-    mut q: Query<(&mut Text, &mut Visibility), With<UiTurnBanner>>,
+    mut q: Query<(&mut Text, &mut Visibility, &HudSlot)>,
 ) {
     let show = net_mode.is_network()
         && *phase.get() == GamePhase::Aiming
         && !turn.round_over
         && !menu.open;
-    for (mut text, mut vis) in q.iter_mut() {
+    for (mut text, mut vis, _) in q.iter_mut().filter(|(_, _, s)| **s == HudSlot::TurnBanner) {
         *vis = visibility(show);
         if !show {
             continue;

@@ -56,19 +56,26 @@ pub fn draw_bounce_border(
     }
 }
 
-/// Hide/show angle-power UI based on game state.
+/// Show each HUD line when the original showed it. Angle and power belong
+/// to a player who is still aiming; the shot's readouts replace them while
+/// it is in the air, and the round counter gives up the bottom row to the
+/// timeout for the same stretch.
 pub fn update_ui_visibility(
     turn: Res<TurnState>,
     menu: Res<MenuOpen>,
-    mut angle_power: Query<&mut Visibility, (With<UiAnglePower>, Without<UiMissileStatus>)>,
-    mut missile_status: Query<&mut Visibility, (With<UiMissileStatus>, Without<UiAnglePower>)>,
+    mut hud: Query<(&mut Visibility, &HudSlot)>,
 ) {
-    let aiming = !(turn.firing || turn.round_over || menu.open);
-    for mut vis in angle_power.iter_mut() {
-        *vis = visibility(aiming);
-    }
-    for mut vis in missile_status.iter_mut() {
-        *vis = visibility(turn.firing && !menu.open);
+    let aiming = !turn.firing && !turn.round_over && !menu.open;
+    let in_flight = turn.firing && !menu.open;
+    for (mut vis, slot) in hud.iter_mut() {
+        let shown = match slot {
+            HudSlot::Angle | HudSlot::Power => aiming,
+            HudSlot::PowerPenalty | HudSlot::Timeout => in_flight,
+            HudSlot::RoundInfo => !turn.firing,
+            // The scoreboard always stands; the banner has its own system.
+            HudSlot::ScoreP1 | HudSlot::ScoreP2 | HudSlot::TurnBanner => continue,
+        };
+        *vis = visibility(shown);
     }
 }
 

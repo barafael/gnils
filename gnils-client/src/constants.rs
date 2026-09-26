@@ -17,8 +17,6 @@ pub const PARTICLE_10_MAX_SPEED: f64 = 250.0;
 pub const N_PARTICLES_5: u32 = 20;
 pub const N_PARTICLES_10: u32 = 30;
 
-pub const DEFAULT_MAX_PLANETS: u32 = 4;
-
 pub const WINDOW_WIDTH: f32 = 800.0;
 pub const WINDOW_HEIGHT: f32 = 600.0;
 

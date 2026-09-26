@@ -167,7 +167,6 @@ fn main() {
                 player::update_turn_banner,
                 physics::sync_transforms,
                 missile::update_missile_visibility,
-                missile::update_missile_ui,
                 rendering::update_bounce_animation,
                 rendering::update_view_size,
                 rendering::resize_trail_canvas,

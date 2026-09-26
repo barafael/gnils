@@ -460,7 +460,7 @@ fn build_lines(
                 ("Invisible", on_off(settings.invisible).into()),
                 ("Fixed power", on_off(settings.fixed_power).into()),
                 ("Particles", on_off(settings.particles_enabled).into()),
-                ("Max rounds", settings.max_rounds.to_string()),
+                ("Max rounds", rounds_label(settings.max_rounds)),
                 ("Max flight", settings.max_flight.to_string()),
                 ("Fullscreen", on_off(settings.fullscreen).into()),
                 ("Back", String::new()),
@@ -511,6 +511,15 @@ fn build_lines(
         // ahead of everything. These arms only exist so the match stays
         // exhaustive.
         LobbyScreen::Room | LobbyScreen::Name => Vec::new(),
+    }
+}
+
+/// How a round limit reads; the original spells an unlimited game out.
+pub(crate) fn rounds_label(max_rounds: u32) -> String {
+    if max_rounds == 0 {
+        "Infinite".into()
+    } else {
+        max_rounds.to_string()
     }
 }
 
@@ -1212,7 +1221,7 @@ mod tests {
             ("Invisible", "Off"),
             ("Fixed power", "Off"),
             ("Particles", "On"),
-            ("Max rounds", "3"),
+            ("Max rounds", "Infinite"),
             ("Max flight", "750"),
             ("Fullscreen", "On"),
         ];

@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use gnils_protocol::GameSettingsData;
 
-use crate::constants::*;
 
 // ── Game phases ────────────────────────────────────────────────────────────
 
@@ -204,11 +203,9 @@ pub struct GameSettings {
 impl Default for GameSettings {
     fn default() -> Self {
         Self {
-            shared: GameSettingsData {
-                max_planets: DEFAULT_MAX_PLANETS,
-                max_rounds: 3,
-                ..default()
-            },
+            // The shared rules are the original's defaults exactly, down
+            // to its unlimited round count.
+            shared: GameSettingsData::default(),
             fullscreen: true,
         }
     }
@@ -307,8 +304,7 @@ impl MenuItem {
             MenuItem::Particles => on_off(settings.particles_enabled),
             MenuItem::MaxPlanets => settings.max_planets.to_string(),
             MenuItem::MaxBlackholes => settings.max_blackholes.to_string(),
-            MenuItem::Rounds if settings.max_rounds == 0 => "inf".to_string(),
-            MenuItem::Rounds => settings.max_rounds.to_string(),
+            MenuItem::Rounds => crate::systems::lobby::rounds_label(settings.max_rounds),
             MenuItem::Fullscreen => on_off(settings.fullscreen),
             MenuItem::Random => on_off(settings.random),
         })

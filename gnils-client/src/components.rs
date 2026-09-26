@@ -114,24 +114,28 @@ pub struct ZoomDimSprite;
 #[derive(Component)]
 pub struct TrailSprite;
 
-#[derive(Component)]
-pub struct UiScoreP1;
-
-#[derive(Component)]
-pub struct UiScoreP2;
-
-#[derive(Component)]
-pub struct UiAnglePower;
-
-#[derive(Component)]
-pub struct UiRoundInfo;
-
-#[derive(Component)]
-pub struct UiMissileStatus;
-
-/// Network games: a line under the HUD saying whose turn it is.
-#[derive(Component)]
-pub struct UiTurnBanner;
+/// One of the HUD's text lines. A single component with a slot, rather than
+/// a marker type per line, so the systems that write them need one query
+/// instead of several that must be proved disjoint.
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum HudSlot {
+    /// Player 1's score, top left.
+    ScoreP1,
+    /// Player 2's score, top right.
+    ScoreP2,
+    /// The firing angle, top centre.
+    Angle,
+    /// The firing power, top centre beside the angle.
+    Power,
+    /// The round counter, bottom centre — replaced by `Timeout` in flight.
+    RoundInfo,
+    /// The power penalty of the shot in flight, top centre.
+    PowerPenalty,
+    /// How long the shot in flight has left, bottom centre.
+    Timeout,
+    /// Network games: whose turn it is.
+    TurnBanner,
+}
 
 #[derive(Component)]
 pub struct UiRoundOverlay;

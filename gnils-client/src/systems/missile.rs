@@ -98,29 +98,3 @@ pub fn update_missile_visibility(
         *vis = visibility(turn.firing && marker.active && on_screen);
     }
 }
-
-/// Update missile status UI text.
-pub fn update_missile_ui(
-    missile_q: Query<(&GravityBody, &MissileMarker)>,
-    turn: Res<TurnState>,
-    mut status_q: Query<(&mut Text, &mut Visibility), With<UiMissileStatus>>,
-) {
-    for (mut text, mut vis) in status_q.iter_mut() {
-        if !turn.firing {
-            *vis = Visibility::Hidden;
-            continue;
-        }
-        *vis = Visibility::Visible;
-
-        for (body, marker) in missile_q.iter().filter(|(_, m)| m.active) {
-            **text = if body.flight >= 0 {
-                format!(
-                    "Power penalty: {}  Timeout in {}",
-                    -marker.power_penalty, body.flight
-                )
-            } else {
-                format!("Power penalty: {}  Shot timed out...", -marker.power_penalty)
-            };
-        }
-    }
-}

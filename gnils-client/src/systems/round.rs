@@ -26,6 +26,9 @@ pub struct RoundReset<'w, 's> {
         (&'static mut MissileMarker, &'static mut Visibility),
         Without<Player>,
     >,
+    particles: Query<'w, 's, Entity, With<ParticleMarker>>,
+    spawn_queue: ResMut<'w, ParticleSpawnQueue>,
+    commands: Commands<'w, 's>,
     trail: Res<'w, TrailCanvas>,
     images: ResMut<'w, Assets<Image>>,
 }
@@ -62,6 +65,13 @@ impl RoundReset<'_, '_> {
         if let Some(image) = self.images.get_mut(&self.trail.image_handle) {
             crate::trail::clear_trail(image.into_inner());
         }
+
+        // A round opens on empty space: debris from the last one must not
+        // still be drifting past the new planets.
+        for entity in self.particles.iter() {
+            self.commands.entity(entity).despawn();
+        }
+        self.spawn_queue.requests.clear();
 
         self.turn.round_over = false;
         self.turn.firing = false;
