@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use gnils_protocol::GameSettingsData;
 
 use crate::constants::*;
 
@@ -34,21 +35,130 @@ pub enum NetworkMode {
 
 impl NetworkMode {
     pub fn is_network(&self) -> bool {
-        matches!(self, NetworkMode::Network { .. })
+        self.player_id().is_some()
     }
     pub fn player_id(&self) -> Option<u8> {
-        if let NetworkMode::Network { player_id } = self {
-            Some(*player_id)
-        } else {
-            None
+        match self {
+            NetworkMode::Local => None,
+            NetworkMode::Network { player_id } => Some(*player_id),
         }
     }
 }
 
 /// Room id for the P2P matchbox room we join or host.
 #[derive(Resource, Default)]
-pub struct JoinRoom {
-    pub text: String,
+pub struct JoinRoom(pub TextField);
+
+/// Draft text while the name editor is open.
+#[derive(Resource, Default)]
+pub struct NameDraft(pub TextField);
+
+/// A single-line editor state: the value plus a caret position, so arrows,
+/// Home/End and Delete edit the middle of the text instead of only the tail.
+#[derive(Default, Clone)]
+pub struct TextField {
+    value: String,
+    /// Caret position, counted in characters (not bytes).
+    cursor: usize,
+}
+
+impl TextField {
+    /// Upper bound for any single field; the join field needs room for a
+    /// pasted URL, a name only for a name.
+    pub const MAX_LEN: usize = 120;
+
+    pub fn text(&self) -> &str {
+        &self.value
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.value.is_empty()
+    }
+
+    pub fn char_len(&self) -> usize {
+        self.value.chars().count()
+    }
+
+    pub fn set(&mut self, s: &str) {
+        self.value = s.chars().take(TextField::MAX_LEN).collect();
+        self.end();
+    }
+
+    pub fn clear(&mut self) {
+        self.value.clear();
+        self.cursor = 0;
+    }
+
+    pub fn left(&mut self) {
+        self.cursor = self.cursor.saturating_sub(1);
+    }
+
+    pub fn right(&mut self) {
+        if self.cursor < self.char_len() {
+            self.cursor += 1;
+        }
+    }
+
+    pub fn home(&mut self) {
+        self.cursor = 0;
+    }
+
+    pub fn end(&mut self) {
+        self.cursor = self.char_len();
+    }
+
+    /// The text before and after the caret.
+    fn split(&self) -> (String, String) {
+        (
+            self.value.chars().take(self.cursor).collect(),
+            self.value.chars().skip(self.cursor).collect(),
+        )
+    }
+
+    /// Insert text at the caret, keeping the field within `max_chars`.
+    pub fn insert(&mut self, s: &str, max_chars: usize) {
+        let (head, tail) = self.split();
+        let room = max_chars.saturating_sub(self.char_len());
+        let added: String = s.chars().take(room).collect();
+        self.cursor += added.chars().count();
+        self.value = head + &added + &tail;
+    }
+
+    pub fn backspace(&mut self) {
+        if self.cursor > 0 {
+            self.left();
+            self.delete();
+        }
+    }
+
+    pub fn delete(&mut self) {
+        let (head, tail) = self.split();
+        let mut rest = tail.chars();
+        if rest.next().is_some() {
+            self.value = head + rest.as_str();
+        }
+    }
+
+    /// Delete the word before the caret (Ctrl+Backspace).
+    pub fn backspace_word(&mut self) {
+        let chars: Vec<char> = self.value.chars().collect();
+        let mut i = self.cursor;
+        while i > 0 && chars[i - 1].is_whitespace() {
+            i -= 1;
+        }
+        while i > 0 && !chars[i - 1].is_whitespace() {
+            i -= 1;
+        }
+        self.value = chars[..i].iter().collect::<String>()
+            + &chars[self.cursor..].iter().collect::<String>();
+        self.cursor = i;
+    }
+
+    /// The value with the caret glyph drawn at its position.
+    pub fn render(&self, caret: &str) -> String {
+        let (head, tail) = self.split();
+        head + caret + &tail
+    }
 }
 
 /// Lobby menu state.
@@ -73,72 +183,47 @@ pub enum LobbyScreen {
 }
 
 /// The lobby's one-line status: the last thing that happened in the room
-/// ("bob claimed Player 2.", "Both seats must be claimed…").
+/// ("otter took Player 2.", "Invite link copied.").
 #[derive(Resource, Default)]
 pub struct LobbyStatus(pub String);
 
-/// Draft text while the name editor is open.
-#[derive(Resource, Default)]
-pub struct NameDraft(pub String);
-
 // ── Game settings ──────────────────────────────────────────────────────────
 
+/// The game's rules and presentation options.
+///
+/// Everything the two peers must agree on lives in `shared`, which travels
+/// verbatim in `NetMsg::Start`; the struct derefs to it, so a rule reads as
+/// `settings.bounce` either way. Fields outside `shared` are this machine's
+/// business alone.
 #[derive(Resource)]
 pub struct GameSettings {
-    pub max_planets: u32,
-    pub max_blackholes: u32,
-    pub bounce: bool,
-    pub invisible: bool,
-    pub fixed_power: bool,
-    pub particles_enabled: bool,
-    pub max_rounds: u32,
-    pub max_flight: i32,
+    pub shared: GameSettingsData,
     pub fullscreen: bool,
-    pub random: bool,
 }
 
 impl Default for GameSettings {
     fn default() -> Self {
         Self {
-            max_planets: DEFAULT_MAX_PLANETS,
-            max_blackholes: 0,
-            bounce: false,
-            invisible: false,
-            fixed_power: false,
-            particles_enabled: true,
-            max_rounds: 3,
-            max_flight: MAX_FLIGHT,
-            fullscreen: false,
-            random: false,
+            shared: GameSettingsData {
+                max_planets: DEFAULT_MAX_PLANETS,
+                max_rounds: 3,
+                ..default()
+            },
+            fullscreen: true,
         }
     }
 }
 
-impl GameSettings {
-    pub fn to_protocol(&self) -> gnils_protocol::GameSettingsData {
-        gnils_protocol::GameSettingsData {
-            max_planets: self.max_planets,
-            max_blackholes: self.max_blackholes,
-            bounce: self.bounce,
-            invisible: self.invisible,
-            fixed_power: self.fixed_power,
-            particles_enabled: self.particles_enabled,
-            max_rounds: self.max_rounds,
-            max_flight: self.max_flight,
-            random: self.random,
-        }
+impl std::ops::Deref for GameSettings {
+    type Target = GameSettingsData;
+    fn deref(&self) -> &Self::Target {
+        &self.shared
     }
+}
 
-    pub fn apply_from_protocol(&mut self, data: &gnils_protocol::GameSettingsData) {
-        self.max_planets = data.max_planets;
-        self.max_blackholes = data.max_blackholes;
-        self.bounce = data.bounce;
-        self.invisible = data.invisible;
-        self.fixed_power = data.fixed_power;
-        self.particles_enabled = data.particles_enabled;
-        self.max_rounds = data.max_rounds;
-        self.max_flight = data.max_flight;
-        self.random = data.random;
+impl std::ops::DerefMut for GameSettings {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.shared
     }
 }
 
@@ -147,6 +232,87 @@ impl GameSettings {
 pub struct MenuOpen {
     pub open: bool,
     pub selected: usize,
+}
+
+impl MenuOpen {
+    /// The row the cursor is on.
+    pub fn item(&self) -> MenuItem {
+        MENU_ITEMS.get(self.selected).copied().unwrap_or(MENU_ITEMS[0])
+    }
+}
+
+/// One row of the in-game settings menu. The renderer draws these and
+/// `menu_nav_input` acts on them, so neither can drift from the other: the
+/// order lives in [`MENU_ITEMS`] alone, and a new row is a compile error
+/// until it has both a label and an action.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MenuItem {
+    Resume,
+    NewGame,
+    MainMenu,
+    Bounce,
+    FixedPower,
+    Invisible,
+    Particles,
+    MaxPlanets,
+    MaxBlackholes,
+    Rounds,
+    Fullscreen,
+    Random,
+}
+
+/// The settings menu, top to bottom. `MenuOpen::selected` indexes it.
+pub const MENU_ITEMS: [MenuItem; 12] = [
+    MenuItem::Resume,
+    MenuItem::NewGame,
+    MenuItem::MainMenu,
+    MenuItem::Bounce,
+    MenuItem::FixedPower,
+    MenuItem::Invisible,
+    MenuItem::Particles,
+    MenuItem::MaxPlanets,
+    MenuItem::MaxBlackholes,
+    MenuItem::Rounds,
+    MenuItem::Fullscreen,
+    MenuItem::Random,
+];
+
+impl MenuItem {
+    pub fn label(self) -> &'static str {
+        match self {
+            MenuItem::Resume => "Resume Game",
+            MenuItem::NewGame => "New Game",
+            MenuItem::MainMenu => "Main Menu",
+            MenuItem::Bounce => "Bounce",
+            MenuItem::FixedPower => "Fixed Power",
+            MenuItem::Invisible => "Invisible Planets",
+            MenuItem::Particles => "Particles",
+            MenuItem::MaxPlanets => "Max Planets",
+            MenuItem::MaxBlackholes => "Max Blackholes",
+            MenuItem::Rounds => "Rounds",
+            MenuItem::Fullscreen => "Fullscreen",
+            MenuItem::Random => "Random Mode",
+        }
+    }
+
+    /// What this row currently reads, for the rows that show a value. The
+    /// three actions at the top show none.
+    pub fn value(self, settings: &GameSettings) -> Option<String> {
+        let on_off = |v: bool| if v { "ON" } else { "OFF" }.to_string();
+        Some(match self {
+            MenuItem::Resume | MenuItem::NewGame | MenuItem::MainMenu => return None,
+            MenuItem::Bounce => on_off(settings.bounce),
+            MenuItem::FixedPower => on_off(settings.fixed_power),
+            MenuItem::Invisible => on_off(settings.invisible),
+            MenuItem::Particles => on_off(settings.particles_enabled),
+            MenuItem::MaxPlanets => settings.max_planets.to_string(),
+            MenuItem::MaxBlackholes => settings.max_blackholes.to_string(),
+            MenuItem::Rounds if settings.max_rounds == 0 => "inf".to_string(),
+            MenuItem::Rounds => settings.max_rounds.to_string(),
+            MenuItem::Fullscreen => on_off(settings.fullscreen),
+            MenuItem::Random => on_off(settings.random),
+        })
+    }
 }
 
 // ── Turn state ─────────────────────────────────────────────────────────────
@@ -163,12 +329,6 @@ pub struct TurnState {
     pub game_over: bool,
 }
 
-impl TurnState {
-    pub fn other_player(&self) -> u8 {
-        3 - self.last_player
-    }
-}
-
 impl Default for TurnState {
     fn default() -> Self {
         Self {
@@ -183,6 +343,17 @@ impl Default for TurnState {
         }
     }
 }
+
+impl TurnState {
+    pub fn other_player(&self) -> u8 {
+        3 - self.last_player
+    }
+}
+
+/// Seconds until the network game auto-advances to the next round (or a new
+/// game), shown as a countdown. `None` while no advance is pending.
+#[derive(Resource, Default)]
+pub struct RoundAdvance(pub Option<f32>);
 
 // ── Asset / rendering resources ────────────────────────────────────────────
 
@@ -263,23 +434,27 @@ pub struct MissileImpactQueue {
     pub impacts: Vec<MissileImpact>,
 }
 
-/// Per-key auto-repeat timers for aiming (matching the original's
-/// `pygame.key.set_repeat(250, 30)` discrete-repeat model).
-#[derive(Resource, Default)]
-pub struct AimRepeat {
-    pub up: KeyRepeatTimer,
-    pub down: KeyRepeatTimer,
-    pub left: KeyRepeatTimer,
-    pub right: KeyRepeatTimer,
+pub struct MissileImpact {
+    pub pos: Vec2,
+    pub hit_type: HitType,
 }
+
+/// What a missile ran into.
+#[derive(Debug, Clone, Copy)]
+pub enum HitType {
+    Planet,
+    Blackhole,
+    Ship(u8),
+}
+
+/// Per-key auto-repeat timers for the four aiming keys, in the order of
+/// `AIM_KEYS` (matching the original's `pygame.key.set_repeat(250, 30)`
+/// discrete-repeat model).
+#[derive(Resource, Default)]
+pub struct AimRepeat(pub [KeyRepeatTimer; 4]);
 
 #[derive(Default, Clone, Copy)]
 pub struct KeyRepeatTimer {
     /// `None` = key not held; `Some(secs)` = countdown until next step fires.
     pub delay: Option<f32>,
-}
-
-pub struct MissileImpact {
-    pub pos: Vec2,
-    pub hit_type: crate::events::HitType,
 }

@@ -1,10 +1,9 @@
 use bevy::prelude::*;
 use gnils_protocol::{PlanetData, generate_planets};
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 
 use crate::components::Planet;
 use crate::resources::*;
+use crate::systems::round::layout_rng;
 
 pub fn spawn_planets(
     mut commands: Commands,
@@ -23,54 +22,40 @@ pub fn spawn_planets(
     // generate identical planets. Runs before `round_setup` increments the
     // round, so this uses the pre-increment round value (deterministic on both
     // peers either way).
-    let mut rng: Box<dyn Rng> = if net_mode.is_network() {
-        let base = net_seed.map(|s| s.base).unwrap_or(0);
-        Box::new(StdRng::seed_from_u64(base ^ turn.round as u64))
-    } else {
-        Box::new(rand::rng())
-    };
-    let planets = generate_planets(&settings.to_protocol(), &mut rng);
+    let mut rng = layout_rng(&net_mode, net_seed.as_deref(), turn.round);
+    let planets = generate_planets(&settings.shared, &mut rng);
     spawn_planet_entities(&mut commands, &assets, &planets);
 }
 
 /// Spawn Bevy entities for a slice of `PlanetData`.
 pub fn spawn_planet_entities(commands: &mut Commands, assets: &GameAssets, planets: &[PlanetData]) {
     for planet in planets {
-        let px = planet.pos.0 as f32;
-        let py = planet.pos.1 as f32;
-
-        if planet.is_blackhole {
-            commands.spawn((
-                Sprite {
-                    color: Color::srgba(0.0, 0.0, 0.0, 0.0),
-                    custom_size: Some(Vec2::new(2.0, 2.0)),
-                    ..default()
-                },
-                Transform::from_xyz(px, py, 2.0),
-                Planet {
-                    mass: planet.mass,
-                    radius: planet.radius,
-                    pos: Vec2::new(px, py),
-                    is_blackhole: true,
-                },
-            ));
+        let pos = Vec2::new(planet.pos.0 as f32, planet.pos.1 as f32);
+        // A blackhole has no texture — only a two-pixel invisible stand-in so
+        // it still occupies an entity with a sprite.
+        let sprite = if planet.is_blackhole {
+            Sprite {
+                color: Color::srgba(0.0, 0.0, 0.0, 0.0),
+                custom_size: Some(Vec2::splat(2.0)),
+                ..default()
+            }
         } else {
-            let ti = planet.texture_index as usize;
-            let sprite_size = (2.0 * planet.radius / 0.96) as f32;
-            commands.spawn((
-                Sprite {
-                    image: assets.planets[ti].clone(),
-                    custom_size: Some(Vec2::new(sprite_size, sprite_size)),
-                    ..default()
-                },
-                Transform::from_xyz(px, py, 2.0),
-                Planet {
-                    mass: planet.mass,
-                    radius: planet.radius,
-                    pos: Vec2::new(px, py),
-                    is_blackhole: false,
-                },
-            ));
-        }
+            Sprite {
+                image: assets.planets[planet.texture_index as usize].clone(),
+                custom_size: Some(Vec2::splat((2.0 * planet.radius / 0.96) as f32)),
+                ..default()
+            }
+        };
+
+        commands.spawn((
+            sprite,
+            Transform::from_xyz(pos.x, pos.y, 2.0),
+            Planet {
+                mass: planet.mass,
+                radius: planet.radius,
+                pos,
+                is_blackhole: planet.is_blackhole,
+            },
+        ));
     }
 }

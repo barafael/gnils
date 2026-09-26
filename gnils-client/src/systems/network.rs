@@ -18,13 +18,14 @@
 ///
 /// Planet layouts and player Y positions are derived from a shared seed
 /// (`NetSeed`), so the peers need not exchange per-round snapshots.
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use gnils_net::*;
 use gnils_protocol::GameSettingsData;
 
 use crate::components::*;
 use crate::resources::*;
-use crate::systems::input::{reset_for_game_start, reset_for_new_round};
+use crate::systems::round::RoundReset;
 
 /// Frame-scoped staging buffer for reliable outbound messages.
 ///
@@ -66,6 +67,32 @@ pub struct GameStart {
     pub settings: GameSettingsData,
 }
 
+/// The room as the lobby edits it: the roster plus the two staging queues.
+/// Every seat action touches all three, so they travel together.
+#[derive(SystemParam)]
+pub struct Room<'w> {
+    pub net: ResMut<'w, NetState>,
+    pub pending: ResMut<'w, PendingEdits>,
+    pub incoming: ResMut<'w, PendingIncoming>,
+}
+
+impl Room<'_> {
+    /// Our own peer id, spelled the way the roster spells it.
+    pub fn me(&self) -> String {
+        self.net.my_id.map(|id| id.to_string()).unwrap_or_default()
+    }
+
+    /// Resolve a seat claim as the host and tell the room about it.
+    pub fn apply_claim(&mut self, status: &mut LobbyStatus, peer: &str, claim: Option<u8>) {
+        host_apply_claim(&mut self.net, &mut self.pending, status, peer, claim);
+    }
+
+    /// Ask the host for a seat, or give ours up. Guests wait for the roster.
+    pub fn request_claim(&mut self, claim: Option<u8>) {
+        self.pending.outgoing_broadcast.push(NetMsg::Claim(claim));
+    }
+}
+
 // ── Plugin ──────────────────────────────────────────────────────────────────
 
 pub struct NetPlugin;
@@ -73,19 +100,25 @@ pub struct NetPlugin;
 impl Plugin for NetPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(NetState::with_name(gnils_net::petname()))
-            .insert_resource(PendingEdits::default())
-            .insert_resource(PendingIncoming::default())
+            .init_resource::<PendingEdits>()
+            .init_resource::<PendingIncoming>()
+            .init_resource::<NetworkMode>()
+            .init_resource::<NetSeed>()
+            .init_resource::<RoundAdvance>()
             .add_systems(
                 Update,
                 (
                     handle_socket,
-                    transition_connecting.after(handle_socket),
-                    flush_pending.after(handle_socket),
-                    apply_game_events.after(handle_socket),
-                    apply_ephemeral.after(handle_socket),
-                    broadcast_aim.after(handle_socket),
-                    check_peer_disconnect.after(handle_socket),
-                    network_auto_advance.after(handle_socket),
+                    (
+                        transition_connecting,
+                        flush_pending,
+                        apply_game_events,
+                        apply_ephemeral,
+                        broadcast_aim,
+                        check_peer_disconnect,
+                        network_auto_advance,
+                    )
+                        .after(handle_socket),
                 ),
             );
     }
@@ -211,7 +244,7 @@ pub(crate) fn host_apply_claim(
         .to_string();
     match (claim, granted) {
         (Some(n), true) => {
-            status.0 = format!("{name} claimed Player {n}.");
+            status.0 = format!("{name} took Player {n}.");
             info!(name = %name, player = n, "seat claimed");
         }
         (None, true) => {
@@ -463,6 +496,39 @@ fn handle_socket(
 
 // ── Outbound flushing ───────────────────────────────────────────────────────
 
+/// Encode and reliably send one message to one peer. A refusal is reported,
+/// not fatal: the caller keeps the message staged and tries again next frame.
+fn send(socket: Option<&mut MatchboxSocket>, msg: &NetMsg, peer: PeerId) -> bool {
+    let (Some(socket), Some(encoded)) = (socket, enc_msg(msg)) else {
+        return false;
+    };
+    socket
+        .channel_mut(CH_RELIABLE)
+        .try_send(encoded, peer)
+        .inspect_err(|e| warn!(error = %e, "reliable send failed; will retry"))
+        .is_ok()
+}
+
+/// Send one message to every peer, reporting whether all of them took it.
+/// An empty room counts as a failure, so the message waits for company.
+fn broadcast(socket: Option<&mut MatchboxSocket>, peers: &[PeerId], msg: &NetMsg) -> bool {
+    if peers.is_empty() {
+        return false;
+    }
+    let (Some(socket), Some(encoded)) = (socket, enc_msg(msg)) else {
+        return false;
+    };
+    let channel = socket.channel_mut(CH_RELIABLE);
+    let mut all_ok = true;
+    for &peer in peers {
+        if let Err(e) = channel.try_send(encoded.clone(), peer) {
+            warn!(error = %e, "reliable broadcast send failed; will retry");
+            all_ok = false;
+        }
+    }
+    all_ok
+}
+
 fn flush_pending(
     mut pending: ResMut<PendingEdits>,
     mut incoming: ResMut<PendingIncoming>,
@@ -475,84 +541,55 @@ fn flush_pending(
 
     let i_sequence = net.is_host || net.peers.is_empty();
     let host = net.host_id();
-
-    let staged: Vec<NetMsg> = std::mem::take(&mut pending.outgoing_broadcast);
+    let mut retry: Vec<NetMsg> = Vec::new();
     let mut to_broadcast: Vec<NetMsg> = Vec::new();
-    let mut retained_broadcast: Vec<NetMsg> = Vec::new();
 
-    for msg in staged {
+    for msg in std::mem::take(&mut pending.outgoing_broadcast) {
         match msg {
+            // The host sequences its own events through the same arm as guest
+            // submissions (in `handle_socket`), so it loops them back
+            // unsequenced rather than sequencing here.
             NetMsg::Game(event) if i_sequence => {
-                // The host sequences its own events through the same arm as
-                // guest submissions (in `handle_socket`), so it loops them back
-                // unsequenced rather than sequencing here.
                 incoming.loopback.push(NetMsg::Game(event));
             }
-            NetMsg::Game(event) => {
-                let submission = NetMsg::Game(event);
-                let sent = match (host, enc_msg(&submission), socket.as_deref_mut()) {
-                    (Some(host), Some(encoded), Some(socket)) => socket
-                        .channel_mut(CH_RELIABLE)
-                        .try_send(encoded, host)
-                        .inspect_err(|e| warn!(error = %e, "submit to host failed; will retry"))
-                        .is_ok(),
-                    _ => false,
-                };
-                if !sent {
-                    retained_broadcast.push(submission);
+            // A guest's submission goes to the host alone.
+            NetMsg::Game(_) => {
+                if !host.is_some_and(|host| send(socket.as_deref_mut(), &msg, host)) {
+                    retry.push(msg);
                 }
             }
             other => to_broadcast.push(other),
         }
     }
 
-    let targeted: Vec<(NetMsg, PeerId)> = std::mem::take(&mut pending.outgoing_targeted);
-    let mut retained_targeted: Vec<(NetMsg, PeerId)> = Vec::new();
-    for (msg, peer) in targeted {
-        let sent = match (enc_msg(&msg), socket.as_deref_mut()) {
-            (Some(encoded), Some(socket)) => socket
-                .channel_mut(CH_RELIABLE)
-                .try_send(encoded, peer)
-                .inspect_err(|e| warn!(error = %e, "reliable targeted send failed; will retry"))
-                .is_ok(),
-            _ => false,
-        };
-        if !sent {
-            retained_targeted.push((msg, peer));
+    let mut retry_targeted: Vec<(NetMsg, PeerId)> = Vec::new();
+    for (msg, peer) in std::mem::take(&mut pending.outgoing_targeted) {
+        if !send(socket.as_deref_mut(), &msg, peer) {
+            retry_targeted.push((msg, peer));
         }
     }
 
     for msg in to_broadcast {
-        if net.peers.is_empty() {
-            retained_broadcast.push(msg);
-            continue;
-        }
-        let Some(socket) = socket.as_deref_mut() else {
-            retained_broadcast.push(msg);
-            continue;
-        };
-        let Some(encoded) = enc_msg(&msg) else {
-            retained_broadcast.push(msg);
-            continue;
-        };
-        let channel = socket.channel_mut(CH_RELIABLE);
-        let mut all_ok = true;
-        for &peer in &net.peers {
-            if let Err(e) = channel.try_send(encoded.clone(), peer) {
-                warn!(error = %e, "reliable broadcast send failed; will retry");
-                all_ok = false;
-            }
-        }
-        if !all_ok {
-            retained_broadcast.push(msg);
+        if !broadcast(socket.as_deref_mut(), &net.peers, &msg) {
+            retry.push(msg);
         }
     }
 
-    pending.outgoing_broadcast = retained_broadcast;
-    pending.outgoing_targeted = retained_targeted;
+    pending.outgoing_broadcast = retry;
+    pending.outgoing_targeted = retry_targeted;
 }
 
 // ── Event application ───────────────────────────────────────────────────────
+
+/// Point one player's gun, wherever the aim came from — their own keyboard,
+/// a live preview, or the shot event both peers replay.
+fn set_aim(players: &mut Query<&mut Player>, id: u8, angle: f64, power: f64) {
+    for mut player in players.iter_mut() {
+        if player.id == id {
+            player.aim(angle, power);
+        }
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 fn apply_game_events(
@@ -560,14 +597,10 @@ fn apply_game_events(
     mut net_mode: ResMut<NetworkMode>,
     mut settings: ResMut<GameSettings>,
     mut net_seed: ResMut<NetSeed>,
-    mut turn: ResMut<TurnState>,
     mut net: ResMut<NetState>,
-    mut players: Query<&mut Player>,
-    mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
-    trail_canvas: Res<TrailCanvas>,
-    mut images: ResMut<Assets<Image>>,
     mut next: ResMut<NextState<GamePhase>>,
     mut status: ResMut<LobbyStatus>,
+    mut reset: RoundReset,
 ) {
     // The host's Start: take the final roster, seat us, and deal. This is the
     // one apply path for sender (the host queues its own Start in the lobby)
@@ -577,17 +610,10 @@ fn apply_game_events(
         match net.my_player() {
             Some(player_id) => {
                 *net_mode = NetworkMode::Network { player_id };
-                settings.apply_from_protocol(&start.settings);
+                settings.shared = start.settings;
                 net_seed.base = start.seed;
                 info!(seed = start.seed, player_id, "game started via host Start");
-                reset_for_game_start(
-                    &mut turn,
-                    &mut players,
-                    &mut missile_q,
-                    &trail_canvas,
-                    &mut images,
-                    &settings,
-                );
+                reset.game_start(&settings);
                 next.set(GamePhase::Loading);
             }
             None => {
@@ -610,19 +636,12 @@ fn apply_game_events(
                 // Write the exact launch parameters onto the shooter's player
                 // so the remote peer launches identically (on the shooter the
                 // ECS values already match; this is a no-op).
-                for mut p in players.iter_mut() {
-                    if p.id == player {
-                        let initial = if p.id == 1 { 0.0 } else { std::f64::consts::PI };
-                        p.angle = angle;
-                        p.power = power;
-                        p.rel_rot = angle - initial;
-                    }
-                }
+                set_aim(&mut reset.players, player, angle, power);
                 // `turn.firing` flips on and `fire_missile` (FixedUpdate, in
                 // Aiming) launches the missile on the next fixed tick, through
                 // the *same* code path as local play. `fire_transition_system`
                 // then moves both peers Aiming -> Firing.
-                turn.firing = true;
+                reset.turn.firing = true;
             }
         }
     }
@@ -633,21 +652,14 @@ fn apply_ephemeral(
     mut players: Query<&mut Player>,
     net_mode: Res<NetworkMode>,
 ) {
+    let Some(pid) = net_mode.player_id() else {
+        incoming.ephemeral.clear();
+        return;
+    };
     for (eph, _peer) in incoming.ephemeral.drain(..) {
         match eph {
             Ephemeral::AimUpdate { angle, power } => {
-                let Some(pid) = net_mode.player_id() else {
-                    continue;
-                };
-                let opponent = 3 - pid;
-                for mut player in players.iter_mut() {
-                    if player.id == opponent {
-                        let initial = if player.id == 1 { 0.0 } else { std::f64::consts::PI };
-                        player.angle = angle;
-                        player.power = power;
-                        player.rel_rot = angle - initial;
-                    }
-                }
+                set_aim(&mut players, 3 - pid, angle, power);
             }
         }
     }
@@ -668,13 +680,13 @@ fn broadcast_aim(
     if turn.current_player != pid || turn.round_over || turn.firing {
         return;
     }
-    let mut cur = None;
-    for p in players.iter() {
-        if p.id == pid {
-            cur = Some((pid, p.angle, p.power));
-        }
-    }
-    let Some(cur) = cur else { return };
+    let Some(cur) = players
+        .iter()
+        .find(|p| p.id == pid)
+        .map(|p| (pid, p.angle, p.power))
+    else {
+        return;
+    };
     if cur == *last {
         return;
     }
@@ -706,64 +718,53 @@ fn check_peer_disconnect(
     mut commands: Commands,
     mut timer: Local<f32>,
 ) {
-    if !net_mode.is_network() {
-        *timer = 0.0;
-        return;
-    }
-
     let in_game = matches!(
         *phase.get(),
         GamePhase::Aiming | GamePhase::Firing | GamePhase::RoundOver | GamePhase::RoundSetup
     );
-    if !in_game {
+    if !net_mode.is_network() || !in_game || !net.peers.is_empty() {
         *timer = 0.0;
         return;
     }
 
-    if net.peers.is_empty() {
-        *timer += time.delta_secs();
-        if *timer >= 3.0 {
-            info!("Opponent disconnected — returning to main menu");
-            *net_mode = NetworkMode::Local;
-            close_socket(&mut commands, &net);
-            next_state.set(GamePhase::MainMenu);
-            *timer = 0.0;
-        }
-    } else {
+    *timer += time.delta_secs();
+    if *timer >= 3.0 {
+        info!("Opponent disconnected — returning to main menu");
+        *net_mode = NetworkMode::Local;
+        close_socket(&mut commands, &net);
+        next_state.set(GamePhase::MainMenu);
         *timer = 0.0;
     }
 }
 
 /// Auto-advance the round/game in network mode, deterministically on both
 /// peers. After a round ends, wait a few seconds, pick who goes first (lower
-/// score; player 1 on ties — same rule as local mode), and start the next
-/// round. After game over, reset scores/round and re-seed for a new game.
+/// score; the other player on ties — same rule as local mode), and start the
+/// next round. After game over, reset scores/round and re-seed for a new game.
 #[allow(clippy::too_many_arguments)]
 fn network_auto_advance(
     time: Res<Time>,
     settings: Res<GameSettings>,
     net: Res<NetState>,
-    mut turn: ResMut<TurnState>,
-    mut players: Query<&mut Player>,
-    mut missile_q: Query<(&mut MissileMarker, &mut Visibility), Without<Player>>,
-    trail_canvas: Res<TrailCanvas>,
-    mut images: ResMut<Assets<Image>>,
     mut next_state: ResMut<NextState<GamePhase>>,
     mut net_seed: ResMut<NetSeed>,
     net_mode: Res<NetworkMode>,
     phase: Res<State<GamePhase>>,
     menu: Res<MenuOpen>,
+    mut advance: ResMut<RoundAdvance>,
     mut timer: Local<f32>,
+    mut reset: RoundReset,
 ) {
-    if !net_mode.is_network() {
+    const ADVANCE_SECS: f32 = 4.0;
+
+    // Nothing to advance to while the opponent is gone — the disconnect
+    // handler takes over and returns to the menu.
+    if !net_mode.is_network() || net.peers.is_empty() {
+        advance.0 = None;
         return;
     }
-    // Don't auto-advance if the opponent is gone — the disconnect handler
-    // takes over and returns to the menu.
-    if net.peers.is_empty() {
-        return;
-    }
-    if *phase.get() != GamePhase::RoundOver || !turn.round_over {
+    if *phase.get() != GamePhase::RoundOver || !reset.turn.round_over {
+        advance.0 = None;
         *timer = 0.0;
         return;
     }
@@ -772,46 +773,18 @@ fn network_auto_advance(
     }
 
     *timer += time.delta_secs();
-    if *timer < 4.0 {
+    advance.0 = Some((ADVANCE_SECS - *timer).max(0.0));
+    if *timer < ADVANCE_SECS {
         return;
     }
     *timer = 0.0;
+    advance.0 = None;
 
-    if turn.game_over {
-        for mut player in players.iter_mut() {
-            player.score = 0;
-        }
-        turn.round = 0;
-        turn.game_over = false;
+    if reset.turn.game_over {
         // Deterministic new layout for the next game (same on both peers).
         net_seed.base = net_seed.base.wrapping_add(1);
     }
-
-    let mut p1_score = 0;
-    let mut p2_score = 0;
-    for player in players.iter() {
-        if player.id == 1 {
-            p1_score = player.score;
-        } else {
-            p2_score = player.score;
-        }
-    }
-    turn.current_player = if p1_score < p2_score {
-        1
-    } else if p2_score < p1_score {
-        2
-    } else {
-        turn.other_player()
-    };
-
-    reset_for_new_round(
-        &mut turn,
-        &mut players,
-        &mut missile_q,
-        &trail_canvas,
-        &mut images,
-        &settings,
-    );
+    reset.advance_round(&settings);
     next_state.set(GamePhase::RoundSetup);
 }
 
@@ -840,7 +813,7 @@ mod tests {
         host_apply_claim(&mut net, &mut pending, &mut status, "guest", Some(2));
 
         assert_eq!(net.seats[0].player, Some(2));
-        assert_eq!(status.0, "bob claimed Player 2.");
+        assert_eq!(status.0, "bob took Player 2.");
         assert!(
             pending
                 .outgoing_broadcast
@@ -897,7 +870,10 @@ mod tests {
         assert!(prune_departed(&mut net));
         assert_eq!(net.seats.len(), 1, "only our own seat survives");
         assert_eq!(net.seats[0].player, Some(1));
-        assert!(net.greeted.is_empty(), "greeting memory of the gone is cleared");
+        assert!(
+            net.greeted.is_empty(),
+            "greeting memory of the gone is cleared"
+        );
 
         // Pruning a pristine roster is not a change.
         assert!(!prune_departed(&mut net));

@@ -11,35 +11,17 @@
             margin: 0;
             padding: 0;
             background: #1a1a2e;
-            display: flex;
-            justify-content: center;
-            align-items: center;
             height: 100%;
             overflow: hidden;
         }
         #game {
             display: block;
-            width: 800px;
-            height: 600px;
+            width: 100vw;
+            height: 100vh;
         }
     </style>
 </head>
 <body>
     <canvas id="game"></canvas>
-    <script>
-        // Scale the fixed 800x600 canvas to fill the viewport while keeping
-        // its aspect ratio (contain). A CSS transform is used instead of
-        // resizing width/height so winit's ResizeObserver never fires and the
-        // game keeps its fixed logical resolution.
-        (function () {
-            const W = 800, H = 600;
-            function fit() {
-                const s = Math.min(window.innerWidth / W, window.innerHeight / H);
-                document.getElementById('game').style.transform = 'scale(' + s + ')';
-            }
-            window.addEventListener('resize', fit);
-            fit();
-        })();
-    </script>
 </body>
 </html>

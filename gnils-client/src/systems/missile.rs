@@ -5,56 +5,38 @@ use gnils_protocol::compute_launch_velocity;
 use crate::components::*;
 use crate::constants::*;
 use crate::resources::*;
-use crate::systems::player::get_launch_point_from_transform;
+use crate::systems::player::launch_point;
 use crate::trail;
 
-/// Handle fire missile: launch the missile from the current player's gun.
-/// Called when turn.firing is set to true by the input system.
+/// Launch the missile from the current player's gun, once `turn.firing` has
+/// been set — by the local keyboard, or by the sequenced `ShotFired` echo.
 pub fn fire_missile(
     mut missile_q: Query<(&mut GravityBody, &mut MissileMarker, &mut Visibility)>,
     mut players: Query<(&mut Player, &Transform)>,
     mut turn: ResMut<TurnState>,
     settings: Res<GameSettings>,
 ) {
-    if !turn.firing || turn.round_over {
+    // Nothing to do unless a shot is pending and the missile is still stowed.
+    if !turn.firing || turn.round_over || missile_q.iter().any(|(_, m, _)| m.active) {
         return;
     }
 
-    // Check if missile is already active (already launched)
-    for (_, marker, _) in missile_q.iter() {
-        if marker.active {
-            return;
-        }
-    }
-
     let current = turn.current_player;
-    if current == 0 {
-        return; // No player active
-    }
+    let Some((mut player, transform)) = players.iter_mut().find(|(p, _)| p.id == current) else {
+        return; // no player active
+    };
 
-    let mut launch_pos = (0.0, 0.0);
-    let mut speed = 0.0;
-    let mut angle = 0.0_f64;
-    let mut trail_color = PLAYER1_COLOR;
-    let mut power_penalty = 0;
-
-    for (mut player, transform) in players.iter_mut() {
-        if player.id != current {
-            continue;
-        }
-        launch_pos = get_launch_point_from_transform(&player, transform);
-        speed = player.power;
-        angle = player.angle; // already radians CCW from east
-        trail_color = player.color_rgb;
-        power_penalty = -(PENALTY_FACTOR * speed) as i32;
-        player.attempts += 1;
-    }
+    let launch_pos = launch_point(&player, transform);
+    let speed = player.power;
+    let velocity = compute_launch_velocity(speed, player.angle);
+    let trail_color = player.color_rgb;
+    let power_penalty = -(PENALTY_FACTOR * speed) as i32;
+    player.attempts += 1;
 
     for (mut body, mut marker, mut vis) in missile_q.iter_mut() {
         body.pos = launch_pos;
         body.last_pos = launch_pos;
-        let vel = compute_launch_velocity(speed, angle);
-        body.velocity = vel;
+        body.velocity = velocity;
         body.flight = settings.max_flight;
 
         marker.active = true;
@@ -64,10 +46,9 @@ pub fn fire_missile(
         *vis = Visibility::Visible;
     }
 
-    let vel = compute_launch_velocity(speed, angle);
     info!(
         "Player {} fires: pos=({:.1},{:.1}) vel=({:.2},{:.2}) power={:.1}",
-        current, launch_pos.0, launch_pos.1, vel.0, vel.1, speed
+        current, launch_pos.0, launch_pos.1, velocity.0, velocity.1, speed
     );
     turn.last_player = current;
     turn.current_player = 0; // no player active while firing
@@ -83,17 +64,17 @@ pub fn draw_missile_trail(
     if !turn.firing {
         return;
     }
+    let Some(image) = images.get_mut(&trail_canvas.image_handle) else {
+        return;
+    };
+    let image = image.into_inner();
 
     for (body, marker) in missile_q.iter() {
-        if !marker.active {
-            continue;
-        }
-
-        if let Some(image) = images.get_mut(&trail_canvas.image_handle) {
-            // Trail canvas is a pixel buffer (0..800, 0..600, Y-down).
-            // Convert from Bevy coords (center origin, Y-up) to pixel coords.
+        if marker.active {
+            // The trail canvas is a pixel buffer (0..800, 0..600, Y-down);
+            // the world is center-origin and Y-up.
             trail::draw_aa_line(
-                image.into_inner(),
+                image,
                 body.last_pos.0 + 400.0,
                 300.0 - body.last_pos.1,
                 body.pos.0 + 400.0,
@@ -104,29 +85,21 @@ pub fn draw_missile_trail(
     }
 }
 
-/// Update missile visibility based on whether it's on screen.
+/// Show the missile only while it is in flight and inside the camera's view.
 pub fn update_missile_visibility(
     mut missile_q: Query<(&GravityBody, &MissileMarker, &mut Visibility)>,
     turn: Res<TurnState>,
+    proj_q: Query<&Projection, With<Camera2d>>,
 ) {
-    if !turn.firing {
-        for (_, _, mut vis) in missile_q.iter_mut() {
-            *vis = Visibility::Hidden;
-        }
+    let Ok(Projection::Orthographic(proj)) = proj_q.single() else {
         return;
-    }
+    };
 
     for (body, marker, mut vis) in missile_q.iter_mut() {
-        if !marker.active {
-            *vis = Visibility::Hidden;
-            continue;
-        }
-        let on_screen = is_on_screen(body.pos);
-        *vis = if on_screen {
-            Visibility::Visible
-        } else {
-            Visibility::Hidden
-        };
+        let on_screen = proj
+            .area
+            .contains(Vec2::new(body.pos.0 as f32, body.pos.1 as f32));
+        *vis = visibility(turn.firing && marker.active && on_screen);
     }
 }
 
@@ -141,20 +114,17 @@ pub fn update_missile_ui(
             *vis = Visibility::Hidden;
             continue;
         }
-
         *vis = Visibility::Visible;
 
-        for (body, marker) in missile_q.iter() {
-            if !marker.active {
-                continue;
-            }
-            let penalty_str = format!("Power penalty: {}", -marker.power_penalty);
-            let timeout_str = if body.flight >= 0 {
-                format!("  Timeout in {}", body.flight)
+        for (body, marker) in missile_q.iter().filter(|(_, m)| m.active) {
+            **text = if body.flight >= 0 {
+                format!(
+                    "Power penalty: {}  Timeout in {}",
+                    -marker.power_penalty, body.flight
+                )
             } else {
-                "  Shot timed out...".to_string()
+                format!("Power penalty: {}  Shot timed out...", -marker.power_penalty)
             };
-            **text = format!("{}{}", penalty_str, timeout_str);
         }
     }
 }

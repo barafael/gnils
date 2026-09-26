@@ -1,72 +1,64 @@
 use bevy::prelude::*;
 
-use gnils_protocol::{BOUNCE_X_MAX, BOUNCE_X_MIN, BOUNCE_Y_MAX, BOUNCE_Y_MIN};
+use gnils_protocol::{BOUNCE_X_MAX, BOUNCE_X_MIN, BOUNCE_Y_MAX, BOUNCE_Y_MIN, PlanetData};
 
 use crate::components::*;
 use crate::resources::*;
 
 // ── Gravity helpers ────────────────────────────────────────────────────────
 
-/// Collect planet data from ECS and call the shared pure-Rust gravity step.
-fn apply_gravity(body: &mut GravityBody, planets: &Query<&Planet>) {
-    let planet_data: Vec<gnils_protocol::PlanetData> = planets
+/// Snapshot the planets for the shared pure-Rust gravity step. Built once per
+/// system run and reused for every body it moves.
+fn planet_data(planets: &Query<&Planet>) -> Vec<PlanetData> {
+    planets
         .iter()
-        .map(|p| gnils_protocol::PlanetData {
+        .map(|p| PlanetData {
             mass: p.mass,
             radius: p.radius,
             pos: (p.pos.x as f64, p.pos.y as f64),
             is_blackhole: p.is_blackhole,
             texture_index: 0,
         })
-        .collect();
+        .collect()
+}
 
+fn apply_gravity(body: &mut GravityBody, planets: &[PlanetData]) {
     gnils_protocol::step_gravity(
         &mut body.pos,
         &mut body.velocity,
         &mut body.last_pos,
         &mut body.flight,
-        &planet_data,
+        planets,
     );
+}
+
+/// Reflect one axis off `limit`: put the crossing point back on the wall,
+/// carry the other axis to where it was as the body crossed, and flip the
+/// velocity.
+fn reflect(pos: &mut f64, last: f64, other: &mut f64, last_other: f64, vel: &mut f64, limit: f64) {
+    let d = *pos - last;
+    if d.abs() > 1e-10 {
+        *other = last_other + (*other - last_other) * (limit - last) / d;
+    }
+    *pos = limit;
+    *vel = -*vel;
 }
 
 /// Apply bounce reflection to a GravityBody at the screen edges.
 /// Used by both missiles and particles when BOUNCE mode is on.
-pub fn bounce_gravity_body(body: &mut GravityBody) {
-    if body.pos.0 > BOUNCE_X_MAX {
-        let d = body.pos.0 - body.last_pos.0;
-        if d.abs() > 1e-10 {
-            body.pos.1 = body.last_pos.1
-                + (body.pos.1 - body.last_pos.1) * (BOUNCE_X_MAX - body.last_pos.0) / d;
-        }
-        body.pos.0 = BOUNCE_X_MAX;
-        body.velocity.0 = -body.velocity.0;
+pub fn bounce_gravity_body(b: &mut GravityBody) {
+    let (pos, last, vel) = (&mut b.pos, b.last_pos, &mut b.velocity);
+    if pos.0 > BOUNCE_X_MAX {
+        reflect(&mut pos.0, last.0, &mut pos.1, last.1, &mut vel.0, BOUNCE_X_MAX);
     }
-    if body.pos.0 < BOUNCE_X_MIN {
-        let d = body.last_pos.0 - body.pos.0;
-        if d.abs() > 1e-10 {
-            body.pos.1 = body.last_pos.1
-                + (body.pos.1 - body.last_pos.1) * (body.last_pos.0 - BOUNCE_X_MIN) / d;
-        }
-        body.pos.0 = BOUNCE_X_MIN;
-        body.velocity.0 = -body.velocity.0;
+    if pos.0 < BOUNCE_X_MIN {
+        reflect(&mut pos.0, last.0, &mut pos.1, last.1, &mut vel.0, BOUNCE_X_MIN);
     }
-    if body.pos.1 > BOUNCE_Y_MAX {
-        let d = body.pos.1 - body.last_pos.1;
-        if d.abs() > 1e-10 {
-            body.pos.0 = body.last_pos.0
-                + (body.pos.0 - body.last_pos.0) * (BOUNCE_Y_MAX - body.last_pos.1) / d;
-        }
-        body.pos.1 = BOUNCE_Y_MAX;
-        body.velocity.1 = -body.velocity.1;
+    if pos.1 > BOUNCE_Y_MAX {
+        reflect(&mut pos.1, last.1, &mut pos.0, last.0, &mut vel.1, BOUNCE_Y_MAX);
     }
-    if body.pos.1 < BOUNCE_Y_MIN {
-        let d = body.last_pos.1 - body.pos.1;
-        if d.abs() > 1e-10 {
-            body.pos.0 = body.last_pos.0
-                + (body.pos.0 - body.last_pos.0) * (body.last_pos.1 - BOUNCE_Y_MIN) / d;
-        }
-        body.pos.1 = BOUNCE_Y_MIN;
-        body.velocity.1 = -body.velocity.1;
+    if pos.1 < BOUNCE_Y_MIN {
+        reflect(&mut pos.1, last.1, &mut pos.0, last.0, &mut vel.1, BOUNCE_Y_MIN);
     }
 }
 
@@ -81,20 +73,21 @@ pub fn missile_gravity(
     if !turn.firing {
         return;
     }
+    let planets = planet_data(&planets);
     for (mut body, marker) in missile_q.iter_mut() {
-        if !marker.active {
-            continue;
+        if marker.active {
+            apply_gravity(&mut body, &planets);
         }
-        apply_gravity(&mut body, &planets);
     }
 }
 
 /// Apply gravity from all planets to particles.
 pub fn particle_gravity(
-    mut particles: Query<(&mut GravityBody, &ParticleMarker)>,
+    mut particles: Query<&mut GravityBody, With<ParticleMarker>>,
     planets: Query<&Planet>,
 ) {
-    for (mut body, _) in particles.iter_mut() {
+    let planets = planet_data(&planets);
+    for mut body in particles.iter_mut() {
         apply_gravity(&mut body, &planets);
     }
 }
@@ -117,16 +110,16 @@ pub fn sync_transforms(
     mut missiles: Query<(&GravityBody, &MissileMarker, &mut Transform), Without<ParticleMarker>>,
     mut particles: Query<(&GravityBody, &mut Transform), With<ParticleMarker>>,
 ) {
+    let place = |body: &GravityBody, transform: &mut Transform| {
+        transform.translation.x = body.pos.0 as f32;
+        transform.translation.y = body.pos.1 as f32;
+    };
     for (body, marker, mut transform) in missiles.iter_mut() {
-        if !marker.active {
-            continue;
+        if marker.active {
+            place(body, &mut transform);
         }
-        transform.translation.x = body.pos.0 as f32;
-        transform.translation.y = body.pos.1 as f32;
     }
-
     for (body, mut transform) in particles.iter_mut() {
-        transform.translation.x = body.pos.0 as f32;
-        transform.translation.y = body.pos.1 as f32;
+        place(body, &mut transform);
     }
 }

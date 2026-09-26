@@ -305,21 +305,35 @@ impl RoomId {
     }
 }
 
-/// The alphabet of generated rooms: unambiguous and lowercase, so a room read
-/// aloud or copied by hand survives the trip.
-const ROOM_ALPHABET: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
+/// Room adjectives: the memorable half of a generated room name.
+const ROOM_ADJECTIVES: &[&str] = &[
+    "amber", "brave", "brisk", "calm", "clever", "cozy", "dandy", "eager", "fussy", "gentle",
+    "glad", "happy", "hazy", "jolly", "keen", "lively", "lucky", "mellow", "merry", "mild",
+    "noble", "plucky", "quiet", "rapid", "rustic", "shiny", "silent", "smart", "snug", "spry",
+    "stellar", "sunny", "swift", "tender", "tidy", "upbeat", "valiant", "vivid", "warm", "witty",
+];
 
-/// A freshly generated room id: five characters, roughly 33 million rooms,
-/// which is far more than a collision ever needs to be unlikely.
+/// Room nouns: the second half of a generated room name. Deliberately distinct
+/// from [`PET_NAMES`], so "room otter" and "player otter" never meet.
+const ROOM_NOUNS: &[&str] = &[
+    "anchor", "basin", "beacon", "birch", "blossom", "canyon", "cedar", "cliff", "cinder",
+    "coral", "dawn", "delta", "dune", "fjord", "fern", "forest", "harbor", "horizon", "island",
+    "ivy", "lagoon", "lantern", "moss", "meadow", "mesa", "mist", "orbit", "orchid", "pine",
+    "pond", "ripple", "reef", "river", "shore", "spring", "star", "summit", "tundra", "valley",
+    "zephyr",
+];
+
+/// A freshly generated room id: a petname — "swift-harbor-42" — that survives
+/// being said aloud across a table, plus two digits. The word pair alone would
+/// give 1600 rooms; the digits lift the space past 160k, far more than any
+/// realistic number of concurrently open rooms, so a fresh room is in
+/// practice always fresh. Lowercase letters, hyphens and digits: a valid
+/// [`RoomId`].
 pub fn random_room() -> String {
-    let mut seed: u64 = rand::random();
-    let mut id = String::new();
-    for _ in 0..5 {
-        let pick = (seed % ROOM_ALPHABET.len() as u64) as usize;
-        seed /= ROOM_ALPHABET.len() as u64;
-        id.push(ROOM_ALPHABET[pick] as char);
-    }
-    id
+    let adjective = ROOM_ADJECTIVES[rand::random_range(0..ROOM_ADJECTIVES.len())];
+    let noun = ROOM_NOUNS[rand::random_range(0..ROOM_NOUNS.len())];
+    let digits: u32 = rand::random_range(0..100);
+    format!("{adjective}-{noun}-{digits:02}")
 }
 
 /// Short pet names a player is born with. One word, easy to say at the table;
@@ -513,8 +527,31 @@ pub fn room_id() -> String {
                 warn!("ignoring invalid room name {arg:?}; using a generated room");
                 random_room()
             }
-            None => "dev-room".to_string(),
+            None => random_room(),
         }
+    }
+}
+
+/// The shareable invite for `room`: on the web the page URL carrying the
+/// `?room=` parameter, native the bare room code. `None` if the browser
+/// location cannot be read.
+pub fn invite_url(room: &str) -> Option<String> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use web_sys::wasm_bindgen::JsValue;
+        let win = web_sys::window()?;
+        let href = win.location().href().ok()?;
+        let url = web_sys::Url::new(&href).ok()?;
+        url.search_params().set("room", room);
+        if let Ok(history) = win.history() {
+            let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&url.href()));
+        }
+        Some(url.href())
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = room;
+        None
     }
 }
 
@@ -626,15 +663,18 @@ mod tests {
     }
 
     #[test]
-    fn generated_rooms_are_five_unambiguous_characters() {
+    fn generated_rooms_are_petnames_and_valid_room_ids() {
         for _ in 0..50 {
             let room = random_room();
-            assert_eq!(room.len(), 5);
-            assert!(
-                room.chars()
-                    .all(|c| ROOM_ALPHABET.contains(&(c as u8))),
-                "{room}"
-            );
+            let parts: Vec<&str> = room.split('-').collect();
+            assert_eq!(parts.len(), 3, "{room}");
+            assert!(ROOM_ADJECTIVES.contains(&parts[0]), "{room}");
+            assert!(ROOM_NOUNS.contains(&parts[1]), "{room}");
+            assert_eq!(parts[2].len(), 2, "{room}");
+            assert!(parts[2].bytes().all(|c| c.is_ascii_digit()), "{room}");
+            // A generated room must survive the round trip through the join
+            // field without edits.
+            assert_eq!(RoomId::parse(&room).unwrap().0, room);
         }
     }
 

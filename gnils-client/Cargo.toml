@@ -8,21 +8,9 @@ bevy = "0.19"
 rand = "0.10"
 gnils-protocol = { path = "../gnils-protocol" }
 gnils-net = { path = "../gnils-net" }
-postcard = { version = "1.1", features = ["alloc"] }
 uuid = "1"
-serde = { version = "1", features = ["derive"] }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-tokio = { version = "1", features = ["rt-multi-thread"] }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
 # rand 0.10 → getrandom 0.4 requires explicit opt-in for wasm32.
+# Kept for its features only (flagged unused by cargo shear).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.4", features = ["wasm_js"] }
-js-sys = "0.3"
-web-sys = { version = "0.3", features = [
-    "Window",
-    "Location",
-    "History",
-    "Url",
-    "UrlSearchParams",
-] }

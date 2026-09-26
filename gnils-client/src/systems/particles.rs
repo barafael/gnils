@@ -12,49 +12,44 @@ pub fn spawn_particles(
     assets: Res<GameAssets>,
     settings: Res<GameSettings>,
 ) {
-    if !settings.particles_enabled {
-        spawn_queue.requests.clear();
+    let requests = std::mem::take(&mut spawn_queue.requests);
+    if !settings.particles_enabled || requests.is_empty() {
         return;
     }
+    info!("Spawning particles: {} requests", requests.len());
 
     let mut rng = rand::rng();
-
-    let requests = std::mem::take(&mut spawn_queue.requests);
-    if !requests.is_empty() {
-        info!("Spawning particles: {} requests", requests.len());
-    }
     for request in requests {
+        let small = request.size == 5;
+        let (texture, speeds) = if small {
+            (
+                assets.explosion_5.clone(),
+                PARTICLE_5_MIN_SPEED..=PARTICLE_5_MAX_SPEED,
+            )
+        } else {
+            (
+                assets.explosion_10.clone(),
+                PARTICLE_10_MIN_SPEED..=PARTICLE_10_MAX_SPEED,
+            )
+        };
+        // Bounce mode keeps the debris around far longer, so halve it.
         let count = if settings.bounce {
             request.count / 2
         } else {
             request.count
         };
+        let pos = (request.pos.x as f64, request.pos.y as f64);
 
         for _ in 0..count {
             let angle = rng.random_range(0..360) as f64;
-            let speed = if request.size == 5 {
-                rng.random_range(PARTICLE_5_MIN_SPEED..=PARTICLE_5_MAX_SPEED)
-            } else {
-                rng.random_range(PARTICLE_10_MIN_SPEED..=PARTICLE_10_MAX_SPEED)
-            };
-
-            let vx = 0.1 * speed * angle.sin();
-            let vy = 0.1 * speed * angle.cos();
-
-            let pos = (request.pos.x as f64, request.pos.y as f64);
-
-            let texture = if request.size == 5 {
-                assets.explosion_5.clone()
-            } else {
-                assets.explosion_10.clone()
-            };
+            let speed = rng.random_range(speeds.clone());
 
             commands.spawn((
-                Sprite::from_image(texture),
-                Transform::from_xyz(pos.0 as f32, pos.1 as f32, 5.0),
+                Sprite::from_image(texture.clone()),
+                Transform::from_xyz(request.pos.x, request.pos.y, 5.0),
                 GravityBody {
                     pos,
-                    velocity: (vx, vy),
+                    velocity: (0.1 * speed * angle.sin(), 0.1 * speed * angle.cos()),
                     last_pos: pos,
                     flight: MAX_FLIGHT,
                 },
