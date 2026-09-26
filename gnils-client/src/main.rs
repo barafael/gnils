@@ -6,6 +6,8 @@ mod systems;
 mod trail;
 
 use bevy::asset::AssetMetaCheck;
+use bevy::camera::visibility::RenderLayers;
+use bevy::gizmos::config::{DefaultGizmoConfigGroup, GizmoConfigStore};
 use bevy::prelude::*;
 #[cfg(not(target_arch = "wasm32"))]
 use bevy::window::MonitorSelection;
@@ -78,6 +80,7 @@ fn main() {
         .init_resource::<RoundResult>()
         .init_resource::<MenuOpen>()
         .init_resource::<AimRepeat>()
+        .add_systems(Startup, confine_gizmos_to_the_main_view)
         // Startup, then the parts that need the assets resource to exist.
         .add_systems(
             Startup,
@@ -234,4 +237,12 @@ fn firing_done_system(
         );
         next_state.set(GamePhase::Aiming);
     }
+}
+
+/// Gizmos default to the world layer, which the minimap camera also draws.
+/// The aim line, the bounce border and the minimap's own frame are all
+/// main-view furniture, so they move to the overlay layer.
+fn confine_gizmos_to_the_main_view(mut store: ResMut<GizmoConfigStore>) {
+    let (config, _) = store.config_mut::<DefaultGizmoConfigGroup>();
+    config.render_layers = RenderLayers::layer(OVERLAY_LAYER);
 }

@@ -189,56 +189,85 @@ pub fn resize_trail_canvas(
     }
 }
 
-/// Draw a zoom/minimap view when the missile is off-screen during firing.
-/// A full-screen dim sprite (ZoomDimSprite) is toggled, and gizmos draw the
-/// overlay borders.
+/// Show the zoom minimap while the shot is out of sight.
+///
+/// The minimap is a second camera on the same world, so it shows the actual
+/// planets and ships rather than a sketch of them. This system only decides
+/// when it is on and where its window sits: the frame around it and the dim
+/// behind it belong to the main view.
 pub fn draw_zoom_view(
     mut gizmos: Gizmos,
     turn: Res<TurnState>,
+    windows: Query<&Window>,
     missile_q: Query<(&GravityBody, &MissileMarker)>,
-    players: Query<(&Player, &Transform)>,
-    proj_q: Query<&Projection, With<Camera2d>>,
+    // The minimap is a Camera2d too, so the main view must be named.
+    proj_q: Query<&Projection, (With<Camera2d>, Without<MinimapCamera>)>,
     mut dim_q: Query<&mut Visibility, With<ZoomDimSprite>>,
+    mut minimap_q: Query<&mut Camera, With<MinimapCamera>>,
 ) {
     let Ok(Projection::Orthographic(proj)) = proj_q.single() else {
         return;
     };
 
-    // The minimap only appears while an active missile is out of view.
-    let off_screen = turn.firing.then(|| {
-        missile_q
+    // The minimap only appears while an active shot is out of view.
+    let off_screen = turn.firing
+        && missile_q
             .iter()
             .filter(|(_, marker)| marker.active)
-            .map(|(body, _)| body.pos)
-            .find(|pos| !proj.area.contains(Vec2::new(pos.0 as f32, pos.1 as f32)))
-    });
-    let missile_pos = off_screen.flatten();
+            .any(|(body, _)| {
+                !proj
+                    .area
+                    .contains(Vec2::new(body.pos.0 as f32, body.pos.1 as f32))
+            });
 
     for mut vis in dim_q.iter_mut() {
-        *vis = visibility(missile_pos.is_some());
+        *vis = visibility(off_screen);
     }
-    let Some(mpos) = missile_pos else {
+
+    let viewport = windows.single().ok().and_then(minimap_viewport);
+    for mut camera in minimap_q.iter_mut() {
+        camera.is_active = off_screen && viewport.is_some();
+        if let Some(viewport) = viewport.clone() {
+            camera.viewport = Some(viewport);
+        }
+    }
+
+    if !off_screen {
         return;
-    };
-
-    // A white frame for the minimap, and inside it a grey one at 1/4 scale
-    // standing for the game viewport.
-    const ZOOM: Vec2 = Vec2::new(600.0, 450.0);
-    const GAME: Vec2 = Vec2::new(200.0, 150.0);
-    gizmos.rect_2d(Isometry2d::IDENTITY, ZOOM, Color::WHITE);
-    gizmos.rect_2d(Isometry2d::IDENTITY, GAME, rgb((150, 150, 150)));
-
-    // Everything on the minimap sits at the same 1/4 scale.
-    let scaled = |x: f32, y: f32| Vec2::new(x / WINDOW_WIDTH, y / WINDOW_HEIGHT) * GAME;
-    gizmos.circle_2d(
-        scaled(mpos.0 as f32, mpos.1 as f32),
-        3.0,
-        Color::srgb(1.0, 0.3, 0.3),
-    );
-    for (player, transform) in players.iter() {
-        let p = transform.translation;
-        gizmos.circle_2d(scaled(p.x, p.y), 2.0, player.color());
     }
+    // A white frame around the minimap, and a grey one inside it marking
+    // where the playfield sits at this zoom.
+    gizmos.rect_2d(Isometry2d::IDENTITY, ZOOM_VIEW, Color::WHITE);
+    gizmos.rect_2d(
+        Isometry2d::IDENTITY,
+        Vec2::new(WINDOW_WIDTH, WINDOW_HEIGHT) / ZOOM_FACTOR,
+        rgb((150, 150, 150)),
+    );
+}
+
+/// Where the minimap's window lands on screen, in physical pixels: the
+/// centred rectangle that the main camera would show `ZOOM_VIEW` world units
+/// in, so the gizmo frame drawn at that size lines up with its edge.
+fn minimap_viewport(window: &Window) -> Option<bevy::camera::Viewport> {
+    let view = visible_world_size(window);
+    let physical = Vec2::new(
+        window.physical_width() as f32,
+        window.physical_height() as f32,
+    );
+    if view.x <= 0.0 || view.y <= 0.0 || physical.x < 1.0 || physical.y < 1.0 {
+        return None;
+    }
+    let size = (physical * ZOOM_VIEW / view).round().as_uvec2().max(UVec2::ONE);
+    // A window narrower than the minimap would put the viewport outside the
+    // render target, which the renderer rejects.
+    if size.x > physical.x as u32 || size.y > physical.y as u32 {
+        return None;
+    }
+    Some(bevy::camera::Viewport {
+        physical_position: ((physical - size.as_vec2()) / 2.0).round().as_uvec2(),
+        physical_size: size,
+        ..default()
+    })
 }
 
 /// Animate the "Round N" / "Game Over" overlay text with zoom and fade effect.

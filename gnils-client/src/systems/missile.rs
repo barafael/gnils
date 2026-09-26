@@ -85,7 +85,9 @@ pub fn draw_missile_trail(
 pub fn update_missile_visibility(
     mut missile_q: Query<(&GravityBody, &MissileMarker, &mut Visibility)>,
     turn: Res<TurnState>,
-    proj_q: Query<&Projection, With<Camera2d>>,
+    // Only the main view decides whether the shot is on screen; the
+    // minimap is a Camera2d as well.
+    proj_q: Query<&Projection, (With<Camera2d>, Without<MinimapCamera>)>,
 ) {
     let Ok(Projection::Orthographic(proj)) = proj_q.single() else {
         return;

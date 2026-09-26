@@ -111,6 +111,10 @@ pub struct Backdrop;
 #[derive(Component)]
 pub struct ZoomDimSprite;
 
+/// The second camera that renders the zoom minimap.
+#[derive(Component)]
+pub struct MinimapCamera;
+
 #[derive(Component)]
 pub struct TrailSprite;
 

@@ -1,7 +1,9 @@
 use bevy::asset::RenderAssetUsages;
-use bevy::camera::ScalingMode;
+use bevy::camera::visibility::RenderLayers;
+use bevy::camera::{ClearColorConfig, ScalingMode};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::ui::IsDefaultUiCamera;
 
 use gnils_protocol::{GUN_OFFSET_P1, GUN_OFFSET_P2};
 
@@ -19,6 +21,35 @@ pub fn setup_camera(mut commands: Commands) {
             },
             ..OrthographicProjection::default_2d()
         }),
+        // The main view draws the world and the overlays laid on top of it.
+        RenderLayers::from_layers(&[WORLD_LAYER, OVERLAY_LAYER]),
+        IsDefaultUiCamera,
+    ));
+
+    // The minimap is the same world seen through a second camera, zoomed a
+    // quarter of the way out, drawn into a window in the middle of the
+    // screen. It shows the real planets and ships, as the original's did,
+    // rather than a sketch of them.
+    commands.spawn((
+        Camera2d,
+        Camera {
+            order: 1,
+            clear_color: ClearColorConfig::None,
+            is_active: false,
+            ..default()
+        },
+        Projection::Orthographic(OrthographicProjection {
+            scaling_mode: ScalingMode::Fixed {
+                width: ZOOM_VIEW.x * ZOOM_FACTOR,
+                height: ZOOM_VIEW.y * ZOOM_FACTOR,
+            },
+            ..OrthographicProjection::default_2d()
+        }),
+        // World only: the dim backdrop and the gizmo frames belong to the
+        // main view, and drawing them again inside the minimap would just
+        // paint over it.
+        RenderLayers::layer(WORLD_LAYER),
+        MinimapCamera,
     ));
 }
 
@@ -132,6 +163,7 @@ pub fn setup_zoom_dim(mut commands: Commands) {
         },
         Transform::from_xyz(0.0, 0.0, 18.0),
         Visibility::Hidden,
+        RenderLayers::layer(OVERLAY_LAYER),
         ZoomDimSprite,
     ));
 }

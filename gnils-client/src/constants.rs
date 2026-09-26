@@ -27,3 +27,19 @@ pub const SHIP_FRAME_HEIGHT: u32 = 33;
 
 pub const KEY_REPEAT_DELAY: f32 = 0.250; // 250 ms before auto-repeat starts
 pub const KEY_REPEAT_INTERVAL: f32 = 0.030; // 30 ms between repeats (~33/sec)
+
+// ── Render layers ───────────────────────────────────────────────────────────
+
+/// The playfield itself: backdrop, planets, ships, trail, shot, debris.
+/// Both the main camera and the minimap draw it.
+pub const WORLD_LAYER: usize = 0;
+/// Things that belong to the main view alone — the dim behind the minimap
+/// and every gizmo. The minimap must not redraw these over itself.
+pub const OVERLAY_LAYER: usize = 1;
+
+// ── Zoom minimap ────────────────────────────────────────────────────────────
+
+/// The minimap window, in main-view world units (the original's 600x450).
+pub const ZOOM_VIEW: bevy::math::Vec2 = bevy::math::Vec2::new(600.0, 450.0);
+/// How much further out the minimap sees than the main view.
+pub const ZOOM_FACTOR: f32 = 4.0;
