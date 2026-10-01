@@ -609,11 +609,15 @@ fn start_refusal(net: &NetState) -> Option<String> {
 // ── Keyboard input ────────────────────────────────────────────────────────────
 
 /// Where Enter on the join field gets the room from: a bare code, or a
-/// pasted invite link (`...?room=code`), whose code is extracted.
+/// pasted invite link (`...#room=code`, or an older `...?room=code`), whose
+/// code is extracted.
 fn extract_room(input: &str) -> Result<RoomId, RoomIdError> {
     let s = input.trim();
     let code = match s.find("room=") {
-        Some(i) => s[i + "room=".len()..].split(['&', '#']).next().unwrap_or(""),
+        Some(i) => s[i + "room=".len()..]
+            .split(['&', '#'])
+            .next()
+            .unwrap_or(""),
         None => s.rsplit('/').next().unwrap_or(s),
     };
     RoomId::parse(code)
@@ -733,8 +737,8 @@ fn lobby_keyboard_input(
     // The shared-room lobby.
     if phase == GamePhase::WaitingForOpponent {
         if let Some(row) = nav(lobby.selected, ROOM_ROWS, &keys) {
-                lobby.selected = row;
-            }
+            lobby.selected = row;
+        }
         if just(KeyCode::Enter) {
             match lobby.selected {
                 seat @ (0 | 1) => seat_action(seat as u8 + 1, &mut room, &mut status),
@@ -1234,9 +1238,7 @@ mod tests {
         }
         // Back is a plain selectable row.
         assert!(
-            lines
-                .iter()
-                .any(|l| l.value.is_none() && l.text == "Back"),
+            lines.iter().any(|l| l.value.is_none() && l.text == "Back"),
             "{lines:?}"
         );
     }
@@ -1249,6 +1251,14 @@ mod tests {
         );
         assert_eq!(
             extract_room("https://game.example/play?room=ab234&x=1").unwrap(),
+            RoomId("ab234".to_string())
+        );
+        assert_eq!(
+            extract_room("https://game.example/play#room=ab234&x=1").unwrap(),
+            RoomId("ab234".to_string())
+        );
+        assert_eq!(
+            extract_room("https://game.example/play#x=1&room=ab234").unwrap(),
             RoomId("ab234".to_string())
         );
         assert_eq!(
