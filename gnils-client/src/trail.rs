@@ -137,7 +137,10 @@ mod tests {
         let mut img = blank_canvas(100, 100);
         draw_aa_line(&mut img, 0.0, 0.0, 99.0, 99.0, (255, 0, 0));
         let lit = lit_pixel_count(&img);
-        assert!(lit >= 100, "expected at least one pixel per step, got {lit}");
+        assert!(
+            lit >= 100,
+            "expected at least one pixel per step, got {lit}"
+        );
         // All lit pixels are reddish (alpha-composited onto black).
         for px in img.data.as_ref().unwrap().as_chunks::<4>().0 {
             if px[3] > 0 {

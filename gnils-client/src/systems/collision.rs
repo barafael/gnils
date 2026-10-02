@@ -49,16 +49,18 @@ pub fn missile_collision(
         // handler clears it once it has scored the hit.
         if let Some(planet) = body_at(&planets, body.pos) {
             let (pos, hit_type) = if planet.is_blackhole {
-                ((planet.pos.x as f64, planet.pos.y as f64), HitType::Blackhole)
+                (
+                    (planet.pos.x as f64, planet.pos.y as f64),
+                    HitType::Blackhole,
+                )
             } else {
                 // Back the missile up to where it met the surface.
-                let impact =
-                    circle_line_intersect(
-                        (planet.pos.x as f64, planet.pos.y as f64),
-                        planet.radius,
-                        body.last_pos,
-                        body.pos,
-                    );
+                let impact = circle_line_intersect(
+                    (planet.pos.x as f64, planet.pos.y as f64),
+                    planet.radius,
+                    body.last_pos,
+                    body.pos,
+                );
                 body.pos = impact;
                 (impact, HitType::Planet)
             };

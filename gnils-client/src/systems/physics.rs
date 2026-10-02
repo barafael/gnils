@@ -49,16 +49,44 @@ fn reflect(pos: &mut f64, last: f64, other: &mut f64, last_other: f64, vel: &mut
 pub fn bounce_gravity_body(b: &mut GravityBody) {
     let (pos, last, vel) = (&mut b.pos, b.last_pos, &mut b.velocity);
     if pos.0 > BOUNCE_X_MAX {
-        reflect(&mut pos.0, last.0, &mut pos.1, last.1, &mut vel.0, BOUNCE_X_MAX);
+        reflect(
+            &mut pos.0,
+            last.0,
+            &mut pos.1,
+            last.1,
+            &mut vel.0,
+            BOUNCE_X_MAX,
+        );
     }
     if pos.0 < BOUNCE_X_MIN {
-        reflect(&mut pos.0, last.0, &mut pos.1, last.1, &mut vel.0, BOUNCE_X_MIN);
+        reflect(
+            &mut pos.0,
+            last.0,
+            &mut pos.1,
+            last.1,
+            &mut vel.0,
+            BOUNCE_X_MIN,
+        );
     }
     if pos.1 > BOUNCE_Y_MAX {
-        reflect(&mut pos.1, last.1, &mut pos.0, last.0, &mut vel.1, BOUNCE_Y_MAX);
+        reflect(
+            &mut pos.1,
+            last.1,
+            &mut pos.0,
+            last.0,
+            &mut vel.1,
+            BOUNCE_Y_MAX,
+        );
     }
     if pos.1 < BOUNCE_Y_MIN {
-        reflect(&mut pos.1, last.1, &mut pos.0, last.0, &mut vel.1, BOUNCE_Y_MIN);
+        reflect(
+            &mut pos.1,
+            last.1,
+            &mut pos.0,
+            last.0,
+            &mut vel.1,
+            BOUNCE_Y_MIN,
+        );
     }
 }
 

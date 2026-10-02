@@ -18,7 +18,9 @@ use constants::*;
 use resources::*;
 use systems::lobby::LobbyPlugin;
 use systems::network::NetPlugin;
-use systems::{collision, input, missile, particles, physics, planet, player, rendering, round, setup};
+use systems::{
+    collision, input, missile, particles, physics, planet, player, rendering, round, setup,
+};
 
 /// Native opens borderless fullscreen to use the whole monitor; on the web
 /// the canvas already fills the viewport and browsers reject startup

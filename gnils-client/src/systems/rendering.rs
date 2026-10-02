@@ -257,7 +257,10 @@ fn minimap_viewport(window: &Window) -> Option<bevy::camera::Viewport> {
     if view.x <= 0.0 || view.y <= 0.0 || physical.x < 1.0 || physical.y < 1.0 {
         return None;
     }
-    let size = (physical * ZOOM_VIEW / view).round().as_uvec2().max(UVec2::ONE);
+    let size = (physical * ZOOM_VIEW / view)
+        .round()
+        .as_uvec2()
+        .max(UVec2::ONE);
     // A window narrower than the minimap would put the viewport outside the
     // render target, which the renderer rejects.
     if size.x > physical.x as u32 || size.y > physical.y as u32 {

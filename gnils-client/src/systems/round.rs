@@ -20,12 +20,8 @@ use crate::resources::*;
 pub struct RoundReset<'w, 's> {
     pub turn: ResMut<'w, TurnState>,
     pub players: Query<'w, 's, &'static mut Player>,
-    pub missiles: Query<
-        'w,
-        's,
-        (&'static mut MissileMarker, &'static mut Visibility),
-        Without<Player>,
-    >,
+    pub missiles:
+        Query<'w, 's, (&'static mut MissileMarker, &'static mut Visibility), Without<Player>>,
     particles: Query<'w, 's, Entity, With<ParticleMarker>>,
     spawn_queue: ResMut<'w, ParticleSpawnQueue>,
     commands: Commands<'w, 's>,
@@ -137,11 +133,7 @@ fn show_planets_for(settings: &GameSettings) -> f64 {
 /// The RNG that draws a round's layout. Networked peers must draw the same
 /// numbers, so theirs comes from the shared seed; a local game gets a fresh
 /// one.
-pub fn layout_rng(
-    net_mode: &NetworkMode,
-    net_seed: Option<&NetSeed>,
-    round: u32,
-) -> Box<dyn Rng> {
+pub fn layout_rng(net_mode: &NetworkMode, net_seed: Option<&NetSeed>, round: u32) -> Box<dyn Rng> {
     if net_mode.is_network() {
         let base = net_seed.map_or(0, |s| s.base);
         Box::new(StdRng::seed_from_u64(base ^ round as u64))
@@ -180,8 +172,8 @@ pub fn handle_missile_impact(
     for impact in std::mem::take(&mut impact_queue.impacts) {
         // A hit throws off a burst of debris, if debris is switched on.
         let mut explode = |on_screen_only: bool| {
-            let visible = !on_screen_only
-                || is_on_screen((impact.pos.x as f64, impact.pos.y as f64));
+            let visible =
+                !on_screen_only || is_on_screen((impact.pos.x as f64, impact.pos.y as f64));
             if settings.particles_enabled && visible {
                 spawn_queue.requests.push(ParticleSpawnRequest {
                     pos: impact.pos,
@@ -206,8 +198,7 @@ pub fn handle_missile_impact(
 
                 let last = turn.last_player;
                 let killed_self = last == hit_id;
-                let power_penalty =
-                    missile_q.iter().next().map_or(0, |m| m.power_penalty);
+                let power_penalty = missile_q.iter().next().map_or(0, |m| m.power_penalty);
 
                 let mut shooter_attempts = 0u32;
                 for mut player in players.iter_mut() {

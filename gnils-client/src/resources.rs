@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use gnils_protocol::GameSettingsData;
 
-
 // ── Game phases ────────────────────────────────────────────────────────────
 
 #[derive(States, Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
@@ -234,7 +233,10 @@ pub struct MenuOpen {
 impl MenuOpen {
     /// The row the cursor is on.
     pub fn item(&self) -> MenuItem {
-        MENU_ITEMS.get(self.selected).copied().unwrap_or(MENU_ITEMS[0])
+        MENU_ITEMS
+            .get(self.selected)
+            .copied()
+            .unwrap_or(MENU_ITEMS[0])
     }
 }
 

@@ -123,10 +123,7 @@ impl Default for GameSettingsData {
 // ── Pure physics / game-logic functions ────────────────────────────────────
 
 pub fn is_on_screen(pos: (f64, f64)) -> bool {
-    pos.0 >= -WORLD_HALF_W
-        && pos.0 < WORLD_HALF_W
-        && pos.1 >= -WORLD_HALF_H
-        && pos.1 < WORLD_HALF_H
+    pos.0 >= -WORLD_HALF_W && pos.0 < WORLD_HALF_W && pos.1 >= -WORLD_HALF_H && pos.1 < WORLD_HALF_H
 }
 
 pub fn is_in_extended_range(pos: (f64, f64)) -> bool {
@@ -266,10 +263,7 @@ pub fn compute_shot_score(
 }
 
 /// Generate a randomised planet layout for one round.
-pub fn generate_planets(
-    settings: &GameSettingsData,
-    rng: &mut impl Rng,
-) -> Vec<PlanetData> {
+pub fn generate_planets(settings: &GameSettingsData, rng: &mut impl Rng) -> Vec<PlanetData> {
     let mut placed: Vec<(f64, f64, f64, f64)> = Vec::new();
     let mut out = Vec::new();
 
@@ -350,8 +344,8 @@ fn planet_no_overlap(x: f64, y: f64, r: f64, m: f64, placed: &[(f64, f64, f64, f
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::StdRng;
     use rand::SeedableRng;
+    use rand::rngs::StdRng;
 
     #[test]
     fn is_on_screen_boundaries() {
@@ -464,7 +458,10 @@ mod tests {
         let settings = GameSettingsData::default();
         let mut a = StdRng::seed_from_u64(42);
         let mut b = StdRng::seed_from_u64(42);
-        assert_eq!(generate_planets(&settings, &mut a), generate_planets(&settings, &mut b));
+        assert_eq!(
+            generate_planets(&settings, &mut a),
+            generate_planets(&settings, &mut b)
+        );
     }
 
     #[test]

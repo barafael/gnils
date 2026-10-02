@@ -19,11 +19,7 @@ pub fn visibility(shown: bool) -> Visibility {
 /// Where a player's gun points at the start of a round, in radians CCW from
 /// east: player 1 faces east, player 2 west.
 pub fn initial_angle(id: u8) -> f64 {
-    if id == 1 {
-        0.0
-    } else {
-        std::f64::consts::PI
-    }
+    if id == 1 { 0.0 } else { std::f64::consts::PI }
 }
 
 // ── Components ─────────────────────────────────────────────────────────────

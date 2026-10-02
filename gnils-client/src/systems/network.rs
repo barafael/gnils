@@ -154,8 +154,7 @@ fn prune_departed(net: &mut NetState) -> bool {
     let me = net.my_id.as_ref().map(|id| id.to_string());
     let before = net.seats.len();
     net.seats.retain(|s| {
-        Some(&s.peer) == me.as_ref()
-            || net.peers.iter().any(|p| p.to_string() == s.peer)
+        Some(&s.peer) == me.as_ref() || net.peers.iter().any(|p| p.to_string() == s.peer)
     });
     net.greeted.retain(|p| net.peers.contains(p));
     net.seats.len() != before
@@ -356,9 +355,9 @@ fn handle_socket(
         .copied()
         .collect();
     if !net.name.is_empty() && !unacquainted.is_empty() {
-        pending
-            .outgoing_broadcast
-            .push(NetMsg::Hello { name: net.name.clone() });
+        pending.outgoing_broadcast.push(NetMsg::Hello {
+            name: net.name.clone(),
+        });
         // The host's own seat is created here, by the Hello it never
         // receives. A re-greet also updates the seat after a rename.
         if net.is_host && sync_host_seat(&mut net, &me) {
@@ -444,8 +443,7 @@ fn handle_socket(
                     // this happens.
                     let known = net.seats.iter().any(|s| s.peer == peer_str);
                     if known {
-                        let seat =
-                            net.seats.iter_mut().find(|s| s.peer == peer_str).unwrap();
+                        let seat = net.seats.iter_mut().find(|s| s.peer == peer_str).unwrap();
                         if seat.name != name {
                             seat.name = name;
                             publish_roster(&mut pending, &net);
