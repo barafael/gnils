@@ -108,12 +108,18 @@ pub fn update_planet_visibility(
 
 /// Set every planet's sprite alpha. `planets_only` leaves blackholes alone —
 /// they are invisible by nature and never fade in.
+///
+/// Writing a sprite re-resolves its material, so a planet already at the
+/// alpha is left untouched.
 fn paint_planets(planets: &mut Query<(&mut Sprite, &Planet)>, alpha: f32, planets_only: bool) {
+    let color = Color::srgba(1.0, 1.0, 1.0, alpha);
     for (mut sprite, planet) in planets.iter_mut() {
         if planets_only && planet.is_blackhole {
             continue;
         }
-        sprite.color = Color::srgba(1.0, 1.0, 1.0, alpha);
+        if sprite.color != color {
+            sprite.color = color;
+        }
     }
 }
 
@@ -173,18 +179,21 @@ pub fn resize_trail_canvas(
     if size == trail.size {
         return;
     }
-    let Some(mut image) = images.get_mut(&trail.image_handle) else {
-        return;
-    };
     // Resizing starts the trail over; it only happens when the window shape
     // changes, and a round begins with a cleared canvas anyway.
-    *image = crate::systems::setup::blank_image(size.x, size.y);
+    //
+    // The canvas gets a new image rather than a resized one under the old
+    // handle: a sprite's material binds its texture when the material is
+    // prepared, so only a sprite pointed at a new asset is sure to sample
+    // the new texture.
+    trail.image_handle = images.add(crate::systems::setup::blank_image(size.x, size.y));
     trail.size = size;
 
     // Say the size on the sprite rather than leaning on its fall-back to the
     // texture's: that fall-back leaves the culling bounds stale, since they
     // are only recomputed when the sprite itself changes.
     for mut sprite in sprite_q.iter_mut() {
+        sprite.image = trail.image_handle.clone();
         sprite.custom_size = Some(size.as_vec2());
     }
 }
