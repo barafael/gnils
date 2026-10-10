@@ -52,7 +52,10 @@ pub fn update_player_sprites(
             *target = ship_blend::blend_frames(&frame1, &frame2, blend_f);
         }
 
-        sprite.color = Color::WHITE;
+        // Writing the sprite re-resolves its material, so only on a change.
+        if sprite.color != Color::WHITE {
+            sprite.color = Color::WHITE;
+        }
         // rel_rot is radians CCW from the ship's natural facing direction.
         transform.rotation = Quat::from_rotation_z(player.rel_rot as f32);
     }
@@ -102,7 +105,9 @@ pub fn update_ship_explosion(
         let s = e * (6.0 - e) * 100.0 / 9.0;
 
         if s <= 0.0 {
-            sprite.custom_size = Some(Vec2::ZERO);
+            if sprite.custom_size != Some(Vec2::ZERO) {
+                sprite.custom_size = Some(Vec2::ZERO);
+            }
             continue;
         }
         if just_started {
